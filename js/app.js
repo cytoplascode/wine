@@ -23,7 +23,35 @@ async function handlePhoto(bitmap, mode) {
 
 onEnter('capture', (mode) => startCapture(mode || 'label'));
 onLeave('capture', stopCapture);
-onEnter('crop', () => crop.showImage(state.labelBitmap));
+onEnter('crop', () => crop.showImage(state.labelBitmap, state.corners));
+
+/* ── Flattening ─────────────────────────────────────────────────────── */
+
+let labelUrl = null;
+
+async function flattenAndReview() {
+  const button = $('#btn-crop-done');
+  button.disabled = true;
+  button.textContent = 'Flattening…';
+  // Yield a frame so the button's new label paints before the resampling loop.
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+
+  try {
+    state.corners = crop.getCorners();
+    state.flattened = await crop.flatten();
+
+    if (labelUrl) URL.revokeObjectURL(labelUrl);
+    labelUrl = URL.createObjectURL(state.flattened.blob);
+    $('#thumb-label').src = labelUrl;
+
+    go('review');
+  } catch (err) {
+    toast(`Could not flatten the label: ${err.message}`);
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Read label';
+  }
+}
 
 /* ── Offline OCR status ─────────────────────────────────────────────── */
 
@@ -100,12 +128,14 @@ function newBottle() {
 }
 
 initCapture({ onPhoto: handlePhoto });
+crop.initCrop();
 
 $('#btn-new-bottle').addEventListener('click', newBottle);
 $('#btn-another').addEventListener('click', newBottle);
 $('#btn-home').addEventListener('click', () => go('home'));
 $('#btn-capture-back').addEventListener('click', () => go('home'));
 $('#btn-crop-back').addEventListener('click', () => go('capture', 'label'));
+$('#btn-crop-done').addEventListener('click', flattenAndReview);
 $('#btn-review-back').addEventListener('click', () => go('crop'));
 ocrCacheBtn.addEventListener('click', () => {
   ocrCacheBtn.hidden = true;

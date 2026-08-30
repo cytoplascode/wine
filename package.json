@@ -5,7 +5,7 @@
   "description": "Offline PWA that turns a wine label photo into an Obsidian Wine note",
   "type": "module",
   "scripts": {
-    "test": "node --test test/",
+    "test": "node --test",
     "serve": "python3 -m http.server 8000"
   }
 }

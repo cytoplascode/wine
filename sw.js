@@ -20,6 +20,7 @@ const SHELL_ASSETS = [
   './js/ui.js',
   './js/camera.js',
   './js/crop.js',
+  './js/warp.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',

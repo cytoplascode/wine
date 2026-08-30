@@ -7,6 +7,7 @@ import * as ocr from './ocr.js';
 import { buildForm, setValues } from './form.js';
 import { emptyRecord } from './schema.js';
 import { parseLabel } from './parse.js';
+import * as vault from './vault.js';
 
 /* ── Photo handling ─────────────────────────────────────────────────── */
 
@@ -99,6 +100,46 @@ async function runOcr() {
 
 onEnter('review', runOcr);
 
+/* ── Vault card ─────────────────────────────────────────────────────── */
+
+const vaultDot = $('#vault-dot');
+const vaultStatus = $('#vault-status');
+const vaultButton = $('#btn-connect-vault');
+
+async function renderVaultCard() {
+  const state = await vault.status();
+  const card = vault.describe(state, vault.getVaultName());
+
+  vaultDot.dataset.state = card.dot;
+  vaultStatus.textContent = card.text;
+
+  if (card.button) {
+    [vaultButton.textContent, vaultButton.dataset.action] = card.button;
+    vaultButton.hidden = false;
+  } else {
+    vaultButton.hidden = true;
+  }
+  return state;
+}
+
+async function onVaultButton() {
+  try {
+    if (vaultButton.dataset.action === 'reconnect') {
+      // requestPermission only works inside a gesture, which is why this lives
+      // behind a button rather than running on load.
+      if (await vault.reconnect() !== 'granted') toast('Access was not granted.');
+    } else {
+      await vault.pick();
+      toast('Vault connected.');
+    }
+  } catch (err) {
+    if (err.name !== 'AbortError') toast(`Could not connect: ${err.message}`);
+  }
+  renderVaultCard();
+}
+
+onEnter('home', renderVaultCard);
+
 /* ── Offline OCR status ─────────────────────────────────────────────── */
 
 const ocrDot = $('#ocr-dot');
@@ -190,5 +231,8 @@ ocrCacheBtn.addEventListener('click', () => {
   messageServiceWorker({ type: 'cache-ocr' });
 });
 
+vaultButton.addEventListener('click', onVaultButton);
+
 registerServiceWorker();
+vault.restore().then(renderVaultCard);
 go('home');

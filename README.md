@@ -119,5 +119,8 @@ and re-render them with any tool that rasterises SVG at 192×192 and 512×512.
 ## Deployment
 
 Pushing to `main` runs the tests and publishes to GitHub Pages via
-`.github/workflows/deploy.yml`. Set **Settings → Pages → Source** to **GitHub Actions** once,
-or the deploy step has nothing to publish to.
+`.github/workflows/deploy.yml`. The workflow enables Pages and sets its source to GitHub
+Actions itself, so there is nothing to configure by hand.
+
+The site is served from a subdirectory (`/wine/`), which is why every path in the app is
+relative and the service worker is registered as `./sw.js`.

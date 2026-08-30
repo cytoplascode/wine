@@ -45,7 +45,11 @@ jobs:
             --exclude 'package.json' \
             ./ _site/
 
+      # enablement turns Pages on and switches its source to GitHub Actions, so
+      # the first deploy does not need anyone to visit the repository settings.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

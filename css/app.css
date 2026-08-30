@@ -19,6 +19,10 @@
 
 * { box-sizing: border-box; }
 
+/* Any explicit `display` outranks the user-agent rule for [hidden], which is
+   easy to trip over given how much of this UI is toggled by that attribute. */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   height: 100%;
@@ -267,10 +271,6 @@ body[data-screen="saved"]   .screen[data-name="saved"] {
   object-fit: contain;
   background: #000;
 }
-
-/* display:block above outranks the user-agent [hidden] rule, which would
-   otherwise leave a broken-image icon in the empty food slot. */
-.thumb img[hidden] { display: none; }
 
 .thumb figcaption {
   padding: 7px 10px;

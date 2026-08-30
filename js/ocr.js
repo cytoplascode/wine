@@ -18,7 +18,7 @@ const SIMD_PROBE = new Uint8Array([
   3, 2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 253, 98, 11,
 ]);
 
-export const hasSimd = () => WebAssembly.validate(SIMD_PROBE);
+const hasSimd = () => WebAssembly.validate(SIMD_PROBE);
 
 let workerPromise = null;
 
@@ -66,13 +66,6 @@ export async function recognize(canvas, onProgress) {
 
   const { data } = await worker.recognize(prepared, {}, { blocks: true, text: true });
   return { text: data.text || '', lines: extractLines(data) };
-}
-
-export async function terminate() {
-  if (!workerPromise) return;
-  const worker = await workerPromise.catch(() => null);
-  workerPromise = null;
-  if (worker) await worker.terminate();
 }
 
 /**

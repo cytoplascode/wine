@@ -60,6 +60,11 @@ wines/Domaine Ponsot - Clos de la Roche - 2018 - food.jpg   (optional)
 The raw OCR text is kept at the end of each note inside an Obsidian `%% … %%` comment, so a
 wrong guess is always recoverable. It is invisible in reading view and in Bases.
 
+Filenames keep their accents — a vault full of `Château` should read properly. If the target
+file system refuses non-ASCII names, the app notices and folds just the filename down to
+`Chateau …`; the frontmatter keeps the real spelling either way. A name that already exists
+gets Obsidian's own ` 2`, ` 3` suffix rather than overwriting anything.
+
 ## Requirements
 
 - **Chrome for Android 132+** — that is the version that shipped `showDirectoryPicker()` on
@@ -72,10 +77,16 @@ to and including OCR still works, and saving falls back to downloading the files
 ## Using it
 
 1. Open the site and add it to your home screen.
-2. **Connect vault** — pick your vault folder, or a subfolder of it. The choice is remembered.
-3. **New bottle** → photograph the label or pick one from the gallery.
-4. Drag the four corners onto the label, then **Read label**.
-5. Correct anything OCR got wrong, optionally add a food photo, then **Save to vault**.
+2. **Download for offline use** once, on the home screen — about 6 MB of recognition engine.
+   After that nothing needs the network again.
+3. **Connect vault** — pick your vault folder, or a subfolder of it. The choice is remembered.
+4. **New bottle** → photograph the label, or tap **Gallery** to use a picture you already took.
+5. Drag the four corners onto the label, then **Read label**.
+6. Correct anything OCR got wrong, fill in price or rating if you like, optionally add a food
+   photo, then **Save to vault**.
+
+Fields the app guessed are marked **AUTO**; editing one clears the mark. One bottle per pass —
+there is no batch import.
 
 Android may ask you to re-confirm folder access after a restart; the home screen shows a
 **Reconnect vault** button when that happens. Choosing "Allow on every visit" in Chrome's
@@ -86,12 +97,19 @@ permission prompt avoids the question.
 No build step and no runtime dependencies — it is plain ES modules served as files.
 
 ```sh
-npm test          # unit tests for the perspective warp, parser and note writer
+npm test          # perspective warp, parser, note writer, vault states
 npm run serve     # http://localhost:8000
 ```
 
 Camera capture and the directory picker need a secure context, so `localhost` works but a
 LAN IP does not.
+
+The pure modules — `warp.js`, `parse.js`, `note.js`, and the vault state machine — carry the
+tests. `note.test.js` asserts a generated note against the vault template byte for byte,
+which is what stops the frontmatter drifting.
+
+`showDirectoryPicker()` cannot be driven by an automated browser, so the vault write path is
+best checked by hand against a throwaway folder before pointing it at a real vault.
 
 ### Regenerating the icons
 

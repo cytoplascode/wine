@@ -7,7 +7,7 @@
  * rather than quietly re-asking — the UI has to be able to show a button.
  */
 
-import { idbGet, idbSet, idbDelete } from './idb.js';
+import { idbGet, idbSet } from './idb.js';
 
 const HANDLE_KEY = 'vault-directory';
 const MODE = { mode: 'readwrite' };
@@ -16,7 +16,6 @@ let handle = null;
 
 export const isSupported = () => typeof window.showDirectoryPicker === 'function';
 
-export const getHandle = () => handle;
 export const getVaultName = () => (handle ? handle.name : '');
 
 /** Load the remembered folder, if there is one. Does not prompt. */
@@ -67,11 +66,6 @@ export async function pick() {
 export async function reconnect() {
   if (!handle || typeof handle.requestPermission !== 'function') return 'none';
   return handle.requestPermission(MODE);
-}
-
-export async function forget() {
-  handle = null;
-  await idbDelete(HANDLE_KEY);
 }
 
 /* ── Writing ────────────────────────────────────────────────────────── */

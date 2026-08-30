@@ -40,4 +40,3 @@ function run(mode, operation) {
 
 export const idbGet = (key) => run('readonly', (store) => store.get(key));
 export const idbSet = (key, value) => run('readwrite', (store) => store.put(value, key));
-export const idbDelete = (key) => run('readwrite', (store) => store.delete(key));

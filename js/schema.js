@@ -61,9 +61,6 @@ export const WINE_FIELDS = [
 /** Fields the user can actually type into, in template order. */
 export const EDITABLE_FIELDS = WINE_FIELDS.filter((f) => f.group);
 
-/** Fields the OCR heuristics may populate. */
-export const OCR_FIELDS = WINE_FIELDS.filter((f) => f.ocr).map((f) => f.key);
-
 export const fieldLabel = (field) => field.label || field.key;
 
 /** A blank record: every editable key present, at its template default. */

@@ -8,6 +8,8 @@ import { buildForm, setValues } from './form.js';
 import { emptyRecord } from './schema.js';
 import { parseLabel } from './parse.js';
 import * as vault from './vault.js';
+import { readValues } from './form.js';
+import { save, PermissionNeeded } from './save.js';
 
 /* ── Photo handling ─────────────────────────────────────────────────── */
 
@@ -98,7 +100,78 @@ async function runOcr() {
   }
 }
 
-onEnter('review', runOcr);
+onEnter('review', () => {
+  renderFoodThumb();
+  runOcr();
+});
+
+/* ── Food photo ─────────────────────────────────────────────────────── */
+
+let foodUrl = null;
+
+function renderFoodThumb() {
+  const image = $('#thumb-food');
+  const addButton = $('#btn-add-food');
+  const removeButton = $('#btn-remove-food');
+
+  if (foodUrl) { URL.revokeObjectURL(foodUrl); foodUrl = null; }
+
+  if (state.foodBlob) {
+    foodUrl = URL.createObjectURL(state.foodBlob);
+    image.src = foodUrl;
+    image.hidden = false;
+    addButton.hidden = true;
+    removeButton.hidden = false;
+  } else {
+    image.removeAttribute('src');
+    image.hidden = true;
+    addButton.hidden = false;
+    removeButton.hidden = true;
+  }
+}
+
+function removeFoodPhoto() {
+  state.foodBlob = null;
+  renderFoodThumb();
+}
+
+/* ── Saving ─────────────────────────────────────────────────────────── */
+
+async function saveBottle() {
+  const button = $('#btn-save');
+  const error = $('#save-error');
+  error.hidden = true;
+
+  if (!state.flattened) {
+    toast('There is no label image to save yet.');
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = 'Saving…';
+  try {
+    const result = await save({
+      record: readValues(),
+      labelBlob: state.flattened.blob,
+      foodBlob: state.foodBlob,
+      ocrText: state.ocrText,
+    });
+
+    $('#saved-title').textContent = result.mode === 'vault' ? 'Saved to your vault' : 'Downloaded';
+    $('#saved-path').textContent = result.path;
+    go('saved');
+  } catch (err) {
+    if (err instanceof PermissionNeeded) {
+      error.textContent = 'The vault needs reconnecting — do that on the home screen, then save again.';
+    } else {
+      error.textContent = `Could not save: ${err.message}`;
+    }
+    error.hidden = false;
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Save to vault';
+  }
+}
 
 /* ── Vault card ─────────────────────────────────────────────────────── */
 
@@ -232,6 +305,9 @@ ocrCacheBtn.addEventListener('click', () => {
 });
 
 vaultButton.addEventListener('click', onVaultButton);
+$('#btn-add-food').addEventListener('click', () => go('capture', 'food'));
+$('#btn-remove-food').addEventListener('click', removeFoodPhoto);
+$('#btn-save').addEventListener('click', saveBottle);
 
 registerServiceWorker();
 vault.restore().then(renderVaultCard);

@@ -74,6 +74,34 @@ export async function forget() {
   await idbDelete(HANDLE_KEY);
 }
 
+/* ── Writing ────────────────────────────────────────────────────────── */
+
+/** Get (or create) a folder directly inside the connected vault. */
+export async function ensureDirectory(name) {
+  if (!handle) throw new Error('No vault is connected');
+  return handle.getDirectoryHandle(name, { create: true });
+}
+
+export async function writeFile(directory, filename, data) {
+  const file = await directory.getFileHandle(filename, { create: true });
+  const writable = await file.createWritable();
+  try {
+    await writable.write(data);
+  } finally {
+    await writable.close();
+  }
+}
+
+export async function fileExists(directory, filename) {
+  try {
+    await directory.getFileHandle(filename);
+    return true;
+  } catch (err) {
+    if (err.name === 'NotFoundError') return false;
+    throw err;
+  }
+}
+
 /**
  * What the home screen should say for a given access state. Pure, so the copy
  * and the branching can be tested without a browser.

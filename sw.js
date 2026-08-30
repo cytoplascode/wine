@@ -28,6 +28,8 @@ const SHELL_ASSETS = [
   './js/wine-data.js',
   './js/vault.js',
   './js/idb.js',
+  './js/note.js',
+  './js/save.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',

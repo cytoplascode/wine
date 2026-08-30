@@ -8,6 +8,7 @@ export const state = {
   flattened: null,     // { canvas, blob } after perspective correction
   foodBlob: null,
   ocrText: '',
+  ocrLines: [],
   fields: {},
 };
 
@@ -18,6 +19,7 @@ export function resetCapture() {
   state.flattened = null;
   state.foodBlob = null;
   state.ocrText = '';
+  state.ocrLines = [];
   state.fields = {};
 }
 

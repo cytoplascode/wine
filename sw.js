@@ -26,8 +26,14 @@ const SHELL_ASSETS = [
   './icons/icon-maskable-512.png',
 ];
 
-// Filled in once the Tesseract assets are vendored.
-const OCR_ASSETS = [];
+// Vendored so recognition never needs the network. Roughly 6 MB, which is why
+// these are fetched on request rather than during install.
+const OCR_ASSETS = [
+  './vendor/tesseract/tesseract.esm.min.js',
+  './vendor/tesseract/worker.min.js',
+  './vendor/tesseract/tesseract-core-simd-lstm.wasm.js',
+  './vendor/tesseract/eng.traineddata.gz',
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

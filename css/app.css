@@ -381,6 +381,17 @@ body[data-screen="saved"]   .screen[data-name="saved"] {
 .group[open] > summary::after { content: "▴"; }
 .group > div { padding: 4px 16px 4px; }
 
+.raw {
+  margin: 0 0 12px;
+  max-height: 240px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  color: var(--muted);
+}
+
 /* ── Saved screen ────────────────────────────────────────────────── */
 
 .done {

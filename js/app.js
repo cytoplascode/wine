@@ -3,6 +3,7 @@
 import { $, state, go, onEnter, onLeave, toast, resetCapture, bitmapToBlob } from './ui.js';
 import { initCapture, startCapture, stopCapture } from './camera.js';
 import * as crop from './crop.js';
+import * as ocr from './ocr.js';
 
 /* ── Photo handling ─────────────────────────────────────────────────── */
 
@@ -52,6 +53,43 @@ async function flattenAndReview() {
     button.textContent = 'Read label';
   }
 }
+
+/* ── Recognition ────────────────────────────────────────────────────── */
+
+const PHASES = {
+  'loading tesseract core': 'Starting the recognition engine…',
+  'initializing tesseract': 'Starting the recognition engine…',
+  'loading language traineddata': 'Loading the language data…',
+  'initializing api': 'Almost ready…',
+  'recognizing text': 'Reading the label…',
+};
+
+function showOcrProgress(fraction, label) {
+  $('#ocr-progress').hidden = false;
+  $('#ocr-progress .bar > i').style.width = `${Math.round(fraction * 100)}%`;
+  $('#ocr-progress-label').textContent = label;
+}
+
+async function runOcr() {
+  if (!state.flattened || state.ocrText) return;
+
+  showOcrProgress(0, 'Starting the recognition engine…');
+  try {
+    const result = await ocr.recognize(state.flattened.canvas, (m) => {
+      showOcrProgress(m.progress || 0, PHASES[m.status] || 'Working…');
+    });
+    state.ocrText = result.text;
+    state.ocrLines = result.lines;
+    $('#raw-text').textContent = result.text.trim() || '(nothing was recognised)';
+  } catch (err) {
+    $('#raw-text').textContent = '';
+    toast(`Could not read the label: ${err.message}`);
+  } finally {
+    $('#ocr-progress').hidden = true;
+  }
+}
+
+onEnter('review', runOcr);
 
 /* ── Offline OCR status ─────────────────────────────────────────────── */
 

@@ -4,6 +4,8 @@ import { $, state, go, onEnter, onLeave, toast, resetCapture, bitmapToBlob } fro
 import { initCapture, startCapture, stopCapture } from './camera.js';
 import * as crop from './crop.js';
 import * as ocr from './ocr.js';
+import { buildForm, setValues } from './form.js';
+import { emptyRecord } from './schema.js';
 
 /* ── Photo handling ─────────────────────────────────────────────────── */
 
@@ -73,6 +75,7 @@ function showOcrProgress(fraction, label) {
 async function runOcr() {
   if (!state.flattened || state.ocrText) return;
 
+  setValues(emptyRecord());
   showOcrProgress(0, 'Starting the recognition engine…');
   try {
     const result = await ocr.recognize(state.flattened.canvas, (m) => {
@@ -167,6 +170,7 @@ function newBottle() {
 
 initCapture({ onPhoto: handlePhoto });
 crop.initCrop();
+buildForm();
 
 $('#btn-new-bottle').addEventListener('click', newBottle);
 $('#btn-another').addEventListener('click', newBottle);

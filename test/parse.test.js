@@ -42,6 +42,15 @@ test('packaging boilerplate is recognised as noise', () => {
   assert.ok(!isNoise('CHÂTEAU LA POMPE'));
 });
 
+test('boilerplate is still recognised once OCR has mangled it', () => {
+  // Verbatim from a dark bottle: without this it became the wine's name.
+  assert.ok(isNoise('MIS EN BOUTEIT.T.E AU CHATEAU'));
+  assert.ok(isNoise('CONTAJNS SULFlTES'));
+  assert.ok(isNoise('PRODUGT OF FRANCE'));
+  // But a real name that merely rhymes with boilerplate is left alone.
+  assert.ok(!isNoise('Domaine du Grand Tinel'));
+});
+
 /* ── Line assembly ──────────────────────────────────────────────────── */
 
 test('a wrapped name is rejoined, a nearby vintage is not swallowed', () => {

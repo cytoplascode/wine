@@ -38,7 +38,28 @@ const SORTED_APPELLATIONS = [...APPELLATIONS].sort(byLengthDesc);
 const SORTED_COUNTRIES = [...COUNTRIES].sort(byLengthDesc);
 const SORTED_VARIETALS = [...VARIETALS].sort(byLengthDesc);
 
-export const isNoise = (text) => NOISE_PATTERNS.some((re) => re.test(text));
+/**
+ * Boilerplate worth catching even when recognition has mangled it. A dark
+ * label turned "MIS EN BOUTEILLE AU CHÂTEAU" into "MIS EN BOUTEIT.T.E AU
+ * CHATEAU", which the exact patterns missed — and unclaimed boilerplate is
+ * exactly what the name heuristics then reach for.
+ */
+const FUZZY_NOISE = [
+  'mis en bouteille', 'contains sulfites', 'contains sulphites',
+  'product of', 'produce of', 'estate bottled', 'grand vin',
+  'government warning', 'imported by', 'wine of origin',
+  'denominazione di origine', 'denominacion de origen',
+];
+
+export function isNoise(text) {
+  if (NOISE_PATTERNS.some((re) => re.test(text))) return true;
+
+  const words = normalize(text).split(' ').filter(Boolean);
+  return FUZZY_NOISE.some((phrase) => {
+    const needle = normalize(phrase);
+    return findPhrase(words, needle, Math.max(1, Math.floor(needle.length * 0.25))) >= 0;
+  });
+}
 
 const isYearOnly = (text) => /^\s*(19|20)\d{2}\s*$/.test(text);
 
@@ -274,9 +295,11 @@ function colourOfVarieties(varieties) {
 
 /** Exact phrase match, then a distance-tolerant pass for longer names, because
  *  OCR mangles the likes of "Gewürztraminer" more often than not. */
-function findPhrase(words, needle) {
+function findPhrase(words, needle, explicitTolerance) {
   const parts = needle.split(' ');
-  const tolerance = needle.length <= 5 ? 0 : needle.length <= 9 ? 1 : 2;
+  const tolerance = explicitTolerance ?? (
+    needle.length <= 5 ? 0 : needle.length <= 9 ? 1 : 2
+  );
 
   for (let i = 0; i + parts.length <= words.length; i++) {
     const window = words.slice(i, i + parts.length).join(' ');

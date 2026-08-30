@@ -107,6 +107,39 @@ body[data-screen="saved"]   .screen[data-name="saved"] {
   line-height: 1.35;
 }
 
+/* ── Language chips ──────────────────────────────────────────────── */
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.chips button {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.chips button[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.chips button[disabled] { opacity: .4; }
+
+.card .hint { margin-top: 10px; }
+
 /* ── Segmented control ───────────────────────────────────────────── */
 
 .segmented {

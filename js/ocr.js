@@ -21,16 +21,25 @@ const SIMD_PROBE = new Uint8Array([
 const hasSimd = () => WebAssembly.validate(SIMD_PROBE);
 
 let workerPromise = null;
+let workerLangs = '';
 
-async function getWorker(onProgress) {
-  if (workerPromise) return workerPromise;
+async function getWorker(langs, onProgress) {
+  // Languages are baked in when the worker is created, so changing them means
+  // building a new one and letting the old one go.
+  if (workerPromise && workerLangs === langs) return workerPromise;
+  if (workerPromise) {
+    const previous = workerPromise.catch(() => null);
+    workerPromise = null;
+    previous.then((worker) => worker && worker.terminate());
+  }
 
+  workerLangs = langs;
   workerPromise = (async () => {
     if (!hasSimd()) {
       throw new Error('This browser lacks WebAssembly SIMD, which the recognition engine needs');
     }
     const { default: Tesseract } = await import(`${VENDOR}tesseract.esm.min.js`);
-    const worker = await Tesseract.createWorker('eng', 1 /* LSTM only */, {
+    const worker = await Tesseract.createWorker(langs, 1 /* LSTM only */, {
       workerPath: `${VENDOR}worker.min.js`,
       // Ends in ".js", which is Tesseract's signal to use this exact build
       // instead of probing for a variant we have not vendored.
@@ -60,8 +69,8 @@ async function getWorker(onProgress) {
  * Returns `{ text, lines }`, where each line carries the bounding box the
  * producer heuristic needs to tell a big name from small print.
  */
-export async function recognize(canvas, onProgress) {
-  const worker = await getWorker(onProgress);
+export async function recognize(canvas, onProgress, langs = 'eng') {
+  const worker = await getWorker(langs, onProgress);
   const { canvas: prepared, zoom } = preprocess(canvas);
 
   const { data } = await worker.recognize(prepared, {}, { blocks: true, text: true });

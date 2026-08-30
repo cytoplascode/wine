@@ -7,7 +7,7 @@
  * end up with a worker that never activates on a flaky mobile connection.
  */
 
-const VERSION = 'v1';
+const VERSION = 'v2';
 const SHELL_CACHE = `shell-${VERSION}`;
 const OCR_CACHE = `ocr-${VERSION}`;
 
@@ -28,6 +28,7 @@ const SHELL_ASSETS = [
   './js/wine-data.js',
   './js/vault.js',
   './js/idb.js',
+  './js/languages.js',
   './js/note.js',
   './js/save.js',
   './icons/icon-192.png',
@@ -35,14 +36,24 @@ const SHELL_ASSETS = [
   './icons/icon-maskable-512.png',
 ];
 
-// Vendored so recognition never needs the network. Roughly 6 MB, which is why
-// these are fetched on request rather than during install.
-const OCR_ASSETS = [
+// Vendored so recognition never needs the network. Several megabytes, which is
+// why these are fetched on request rather than during install.
+const OCR_CORE = [
   './vendor/tesseract/tesseract.esm.min.js',
   './vendor/tesseract/worker.min.js',
   './vendor/tesseract/tesseract-core-simd-lstm.wasm.js',
-  './vendor/tesseract/eng.traineddata.gz',
 ];
+
+// Every pack is in the repository, but only the ones the user picked are worth
+// pushing onto their phone.
+const KNOWN_LANGS = ['eng', 'fra', 'ita', 'spa', 'por', 'deu', 'kat'];
+
+function ocrAssets(langs) {
+  const chosen = (Array.isArray(langs) ? langs : []).filter((l) => KNOWN_LANGS.includes(l));
+  const packs = (chosen.length ? chosen : ['eng'])
+    .map((lang) => `./vendor/tesseract/${lang}.traineddata.gz`);
+  return [...OCR_CORE, ...packs];
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -91,9 +102,9 @@ self.addEventListener('fetch', (event) => {
 self.addEventListener('message', (event) => {
   const data = event.data || {};
   if (data.type === 'cache-ocr') {
-    event.waitUntil(cacheOcrAssets(event.source));
+    event.waitUntil(cacheOcrAssets(event.source, data.langs));
   } else if (data.type === 'ocr-status') {
-    event.waitUntil(reportOcrStatus(event.source));
+    event.waitUntil(reportOcrStatus(event.source, data.langs));
   }
 });
 
@@ -101,16 +112,17 @@ function isVendorAsset(url) {
   return url.includes('/vendor/');
 }
 
-async function cacheOcrAssets(client) {
+async function cacheOcrAssets(client, langs) {
+  const assets = ocrAssets(langs);
   const cache = await caches.open(OCR_CACHE);
   let done = 0;
 
   const post = (extra) => client && client.postMessage({
-    type: 'ocr-progress', done, total: OCR_ASSETS.length, ...extra,
+    type: 'ocr-progress', done, total: assets.length, ...extra,
   });
 
   post({});
-  for (const asset of OCR_ASSETS) {
+  for (const asset of assets) {
     try {
       if (!(await cache.match(asset))) await cache.add(asset);
     } catch (err) {
@@ -123,16 +135,17 @@ async function cacheOcrAssets(client) {
   post({ complete: true });
 }
 
-async function reportOcrStatus(client) {
+async function reportOcrStatus(client, langs) {
+  const assets = ocrAssets(langs);
   const cache = await caches.open(OCR_CACHE);
-  const present = await Promise.all(OCR_ASSETS.map((a) => cache.match(a)));
+  const present = await Promise.all(assets.map((a) => cache.match(a)));
   const done = present.filter(Boolean).length;
   if (client) {
     client.postMessage({
       type: 'ocr-progress',
       done,
-      total: OCR_ASSETS.length,
-      complete: done === OCR_ASSETS.length,
+      total: assets.length,
+      complete: done === assets.length,
     });
   }
 }

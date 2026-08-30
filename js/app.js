@@ -10,6 +10,9 @@ import { parseLabel } from './parse.js';
 import * as vault from './vault.js';
 import { readValues } from './form.js';
 import { save, PermissionNeeded } from './save.js';
+import {
+  LANGUAGES, MAX_ACTIVE, getLanguages, setLanguages, toTesseractLangs, totalMegabytes,
+} from './languages.js';
 
 /* ── Photo handling ─────────────────────────────────────────────────── */
 
@@ -84,10 +87,14 @@ async function runOcr() {
   try {
     const result = await ocr.recognize(state.flattened.canvas, (m) => {
       showOcrProgress(m.progress || 0, PHASES[m.status] || 'Working…');
-    });
+    }, toTesseractLangs(getLanguages()));
     state.ocrText = result.text;
     state.ocrLines = result.lines;
-    $('#raw-text').textContent = result.text.trim() || '(nothing was recognised)';
+    $('#raw-text').textContent = result.lines.length
+      ? result.lines
+        .map((l) => `${String(Math.round(l.confidence)).padStart(3)}%  ${l.text}`)
+        .join('\n')
+      : '(nothing was recognised)';
 
     const { fields, auto } = parseLabel(result);
     state.fields = fields;
@@ -252,6 +259,35 @@ function renderOcrProgress({ done, total, complete, error }) {
   ocrCacheBtn.hidden = done !== 0;
 }
 
+function renderLanguageChips() {
+  const chips = $('#language-chips');
+  const chosen = getLanguages();
+  chips.textContent = '';
+
+  for (const language of LANGUAGES) {
+    const on = chosen.includes(language.code);
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = language.label;
+    button.setAttribute('aria-pressed', String(on));
+    button.disabled = !on && chosen.length >= MAX_ACTIVE;
+    button.addEventListener('click', () => {
+      const next = on
+        ? chosen.filter((code) => code !== language.code)
+        : [...chosen, language.code];
+      setLanguages(next);
+      renderLanguageChips();
+      messageServiceWorker({ type: 'ocr-status', langs: getLanguages() });
+    });
+    chips.append(button);
+  }
+
+  const size = totalMegabytes(chosen).toFixed(1);
+  $('#language-hint').textContent = chosen.length >= MAX_ACTIVE
+    ? `${size} MB of language data. That is the limit — each one slows recognition down.`
+    : `${size} MB of language data. Pick the languages your labels are printed in.`;
+}
+
 async function messageServiceWorker(payload) {
   if (!('serviceWorker' in navigator)) return;
   const registration = await navigator.serviceWorker.ready;
@@ -273,7 +309,7 @@ async function registerServiceWorker() {
   try {
     await navigator.serviceWorker.register('./sw.js');
     await navigator.serviceWorker.ready;
-    messageServiceWorker({ type: 'ocr-status' });
+    messageServiceWorker({ type: 'ocr-status', langs: getLanguages() });
   } catch (err) {
     ocrDot.dataset.state = 'err';
     ocrStatus.textContent = `Offline setup failed: ${err.message}`;
@@ -290,6 +326,7 @@ function newBottle() {
 initCapture({ onPhoto: handlePhoto });
 crop.initCrop();
 buildForm();
+renderLanguageChips();
 
 $('#btn-new-bottle').addEventListener('click', newBottle);
 $('#btn-another').addEventListener('click', newBottle);
@@ -301,7 +338,7 @@ $('#btn-review-back').addEventListener('click', () => go('crop'));
 ocrCacheBtn.addEventListener('click', () => {
   ocrCacheBtn.hidden = true;
   toast('Downloading the recognition engine…');
-  messageServiceWorker({ type: 'cache-ocr' });
+  messageServiceWorker({ type: 'cache-ocr', langs: getLanguages() });
 });
 
 vaultButton.addEventListener('click', onVaultButton);

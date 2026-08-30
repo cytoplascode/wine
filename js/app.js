@@ -1,42 +1,29 @@
-/* App shell: screen routing, service worker lifecycle, offline-OCR status. */
+/* Wiring and startup: buttons, screen hooks, service worker lifecycle. */
 
-export const $ = (sel) => document.querySelector(sel);
+import { $, state, go, onEnter, onLeave, toast, resetCapture, bitmapToBlob } from './ui.js';
+import { initCapture, startCapture, stopCapture } from './camera.js';
+import * as crop from './crop.js';
 
-export const state = {
-  labelBitmap: null,   // ImageBitmap straight from camera/gallery
-  corners: null,       // 4 points in source-image pixels
-  flattened: null,     // { canvas, blob } after perspective correction
-  foodBlob: null,
-  ocrText: '',
-  fields: {},
-};
+/* ── Photo handling ─────────────────────────────────────────────────── */
 
-/* ── Screen routing ─────────────────────────────────────────────────── */
-
-const leaveHooks = new Map();
-const enterHooks = new Map();
-
-export function onEnter(screen, fn) { enterHooks.set(screen, fn); }
-export function onLeave(screen, fn) { leaveHooks.set(screen, fn); }
-
-export function go(screen, arg) {
-  const current = document.body.dataset.screen;
-  if (current && leaveHooks.has(current)) leaveHooks.get(current)();
-  document.body.dataset.screen = screen;
-  if (enterHooks.has(screen)) enterHooks.get(screen)(arg);
+async function handlePhoto(bitmap, mode) {
+  if (mode === 'food') {
+    state.foodBlob = await bitmapToBlob(bitmap);
+    bitmap.close();
+    go('review');
+    return;
+  }
+  if (state.labelBitmap) state.labelBitmap.close();
+  state.labelBitmap = bitmap;
+  state.corners = null;
+  go('crop');
 }
 
-/* ── Toast ──────────────────────────────────────────────────────────── */
+/* ── Screen hooks ───────────────────────────────────────────────────── */
 
-let toastTimer = null;
-
-export function toast(message, ms = 3200) {
-  const el = $('#toast');
-  el.textContent = message;
-  el.hidden = false;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.hidden = true; }, ms);
-}
+onEnter('capture', (mode) => startCapture(mode || 'label'));
+onLeave('capture', stopCapture);
+onEnter('crop', () => crop.showImage(state.labelBitmap));
 
 /* ── Offline OCR status ─────────────────────────────────────────────── */
 
@@ -72,27 +59,18 @@ function renderOcrProgress({ done, total, complete, error }) {
   ocrBar.hidden = false;
   ocrBar.querySelector('i').style.width = `${Math.round((done / total) * 100)}%`;
   ocrStatus.textContent = done === 0
-    ? 'Not downloaded — needs one connection, then works offline forever.'
+    ? 'Not downloaded — needs one connection, then works offline for good.'
     : `Downloading… ${done} of ${total} files.`;
   ocrCacheBtn.hidden = done !== 0;
 }
 
-function messageServiceWorker(payload) {
-  if (navigator.serviceWorker.controller) {
-    navigator.serviceWorker.controller.postMessage(payload);
-  }
-}
-
-/* ── Startup ────────────────────────────────────────────────────────── */
-
-function wireStaticButtons() {
-  $('#btn-new-bottle').addEventListener('click', () => go('capture', 'label'));
-  $('#btn-capture-back').addEventListener('click', () => go('home'));
-  $('#btn-crop-back').addEventListener('click', () => go('capture', 'label'));
-  $('#btn-review-back').addEventListener('click', () => go('crop'));
-  $('#btn-another').addEventListener('click', () => go('capture', 'label'));
-  $('#btn-home').addEventListener('click', () => go('home'));
-  ocrCacheBtn.addEventListener('click', () => messageServiceWorker({ type: 'cache-ocr' }));
+async function messageServiceWorker(payload) {
+  if (!('serviceWorker' in navigator)) return;
+  const registration = await navigator.serviceWorker.ready;
+  // On a first visit the worker has not taken control yet, so `controller` is
+  // still null; the active worker can be messaged either way.
+  const worker = navigator.serviceWorker.controller || registration.active;
+  if (worker) worker.postMessage(payload);
 }
 
 async function registerServiceWorker() {
@@ -114,6 +92,26 @@ async function registerServiceWorker() {
   }
 }
 
-wireStaticButtons();
+/* ── Startup ────────────────────────────────────────────────────────── */
+
+function newBottle() {
+  resetCapture();
+  go('capture', 'label');
+}
+
+initCapture({ onPhoto: handlePhoto });
+
+$('#btn-new-bottle').addEventListener('click', newBottle);
+$('#btn-another').addEventListener('click', newBottle);
+$('#btn-home').addEventListener('click', () => go('home'));
+$('#btn-capture-back').addEventListener('click', () => go('home'));
+$('#btn-crop-back').addEventListener('click', () => go('capture', 'label'));
+$('#btn-review-back').addEventListener('click', () => go('crop'));
+ocrCacheBtn.addEventListener('click', () => {
+  ocrCacheBtn.hidden = true;
+  toast('Downloading the recognition engine…');
+  messageServiceWorker({ type: 'cache-ocr' });
+});
+
 registerServiceWorker();
 go('home');

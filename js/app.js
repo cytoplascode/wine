@@ -6,6 +6,7 @@ import * as crop from './crop.js';
 import * as ocr from './ocr.js';
 import { buildForm, setValues } from './form.js';
 import { emptyRecord } from './schema.js';
+import { parseLabel } from './parse.js';
 
 /* ── Photo handling ─────────────────────────────────────────────────── */
 
@@ -84,6 +85,10 @@ async function runOcr() {
     state.ocrText = result.text;
     state.ocrLines = result.lines;
     $('#raw-text').textContent = result.text.trim() || '(nothing was recognised)';
+
+    const { fields, auto } = parseLabel(result);
+    state.fields = fields;
+    setValues({ ...emptyRecord(), ...fields }, auto);
   } catch (err) {
     $('#raw-text').textContent = '';
     toast(`Could not read the label: ${err.message}`);

@@ -263,10 +263,14 @@ body[data-screen="saved"]   .screen[data-name="saved"] {
 .thumb img {
   display: block;
   width: 100%;
-  height: 150px;
+  height: 180px;
   object-fit: contain;
   background: #000;
 }
+
+/* display:block above outranks the user-agent [hidden] rule, which would
+   otherwise leave a broken-image icon in the empty food slot. */
+.thumb img[hidden] { display: none; }
 
 .thumb figcaption {
   padding: 7px 10px;
@@ -278,7 +282,7 @@ body[data-screen="saved"]   .screen[data-name="saved"] {
 
 .thumb-btn {
   width: 100%;
-  height: 150px;
+  height: 180px;
   border: 0;
   background: var(--surface-2);
   color: var(--muted);

@@ -24,6 +24,8 @@ const SHELL_ASSETS = [
   './js/ocr.js',
   './js/schema.js',
   './js/form.js',
+  './js/parse.js',
+  './js/wine-data.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',

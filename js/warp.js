@@ -128,19 +128,118 @@ export function warpQuad(source, quad, width, height) {
   ];
   const h = solveHomography(corners, quad);
 
+  return resample(source, width, height, (dx, dy, point) => {
+    const den = h[6] * dx + h[7] * dy + 1;
+    point.x = (h[0] * dx + h[1] * dy + h[2]) / den;
+    point.y = (h[3] * dx + h[4] * dy + h[5]) / den;
+  });
+}
+
+/* ── Cylindrical unwrap ─────────────────────────────────────────────── */
+
+/**
+ * Flatten a label that is wrapped round a bottle.
+ *
+ * A homography corrects perspective but cannot undo curvature: the label's own
+ * surface is curved, so its text is compressed towards the silhouette edges and
+ * its lines bow. Measured on a modelled bottle, that is what shreds the small
+ * print into fragments like "APPE" / "LLATION SAINT-ESTE" / "PHE".
+ *
+ * `points` are [A, B, C, D, E, F]: the top-left, top-middle and top-right of
+ * the label, then bottom-right, bottom-middle and bottom-left.
+ *
+ *      A ---- B ---- C          The top edge A-B-C and the bottom edge F-E-D
+ *      |             |          are the projection of the cylinder's circular
+ *      |             |          cross-section, so each is half an ellipse.
+ *      F ---- E ---- D
+ *
+ * An ellipse through those three points is `centre + axis·cos φ + bulge·sin φ`,
+ * where `axis` is the half-chord and `bulge` runs from the chord's midpoint to
+ * the middle handle. Sweeping φ from π to 0 walks the surface in equal *angular*
+ * steps, which are equal steps of arc length on the label itself — so writing
+ * them into evenly spaced output columns is exactly the unrolling.
+ *
+ * The model assumes the label spans the full visible half-circumference, which
+ * is close enough for a label that wraps most of the front of a bottle.
+ */
+export function warpCylinder(source, points, width, height) {
+  const [a, b, c, d, e, f] = points;
+
+  const top = ellipseThrough(a, b, c);
+  const bottom = ellipseThrough(f, e, d);
+
+  return resample(source, width, height, (dx, dy, point) => {
+    // φ runs π → 0 left to right, so u = 0 lands on A and u = 1 on C.
+    const phi = (1 - dx / width) * Math.PI;
+    const cos = Math.cos(phi);
+    const sin = Math.sin(phi);
+
+    const topX = top.cx + top.ax * cos + top.bx * sin;
+    const topY = top.cy + top.ay * cos + top.by * sin;
+    const bottomX = bottom.cx + bottom.ax * cos + bottom.bx * sin;
+    const bottomY = bottom.cy + bottom.ay * cos + bottom.by * sin;
+
+    const v = dy / height;
+    point.x = topX + (bottomX - topX) * v;
+    point.y = topY + (bottomY - topY) * v;
+  });
+}
+
+/** The half-ellipse passing through `left` at φ=π, `middle` at φ=π/2, `right` at φ=0. */
+function ellipseThrough(left, middle, right) {
+  const cx = (left.x + right.x) / 2;
+  const cy = (left.y + right.y) / 2;
+  return {
+    cx,
+    cy,
+    ax: (right.x - left.x) / 2,
+    ay: (right.y - left.y) / 2,
+    bx: middle.x - cx,
+    by: middle.y - cy,
+  };
+}
+
+/**
+ * Output size for a wrapped label. The width is the *arc* length, not the chord:
+ * unrolling half a cylinder of chord `2r` gives `πr`, so the chord grows by π/2.
+ */
+export function cylinderSize(points, maxSide = MAX_SIDE) {
+  const [a, b, c, d, e, f] = points;
+
+  const chord = (distance(a, c) + distance(f, d)) / 2;
+  let width = chord * (Math.PI / 2);
+  let height = Math.max(distance(a, f), distance(c, d));
+
+  const longest = Math.max(width, height);
+  if (longest > maxSide) {
+    const k = maxSide / longest;
+    width *= k;
+    height *= k;
+  }
+  return { width: Math.max(1, Math.round(width)), height: Math.max(1, Math.round(height)) };
+}
+
+/* ── Shared resampler ───────────────────────────────────────────────── */
+
+/**
+ * Walk every output pixel, ask `mapPoint` where it came from, and sample the
+ * source there with bilinear interpolation. Mapping destination → source (never
+ * the reverse) is what guarantees the result has no holes.
+ */
+function resample(source, width, height, mapPoint) {
   const src = source.data;
   const sw = source.width;
   const sh = source.height;
   const out = new Uint8ClampedArray(width * height * 4);
+  const point = { x: 0, y: 0 };
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      // Sample through the pixel centre, then step back to texel space.
-      const dx = x + 0.5;
-      const dy = y + 0.5;
-      const den = h[6] * dx + h[7] * dy + 1;
-      const sx = (h[0] * dx + h[1] * dy + h[2]) / den - 0.5;
-      const sy = (h[3] * dx + h[4] * dy + h[5]) / den - 0.5;
+      mapPoint(x + 0.5, y + 0.5, point);
+
+      // Step back from pixel centres into texel space.
+      const sx = point.x - 0.5;
+      const sy = point.y - 0.5;
 
       const x0 = Math.floor(sx);
       const y0 = Math.floor(sy);
@@ -163,9 +262,9 @@ export function warpQuad(source, quad, width, height) {
       const w11 = fx * fy;
 
       const o = (y * width + x) * 4;
-      for (let c = 0; c < 4; c++) {
-        out[o + c] = src[i00 + c] * w00 + src[i10 + c] * w10
-                   + src[i01 + c] * w01 + src[i11 + c] * w11;
+      for (let ch = 0; ch < 4; ch++) {
+        out[o + ch] = src[i00 + ch] * w00 + src[i10 + ch] * w10
+                    + src[i01 + ch] * w01 + src[i11 + ch] * w11;
       }
     }
   }

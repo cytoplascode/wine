@@ -62,24 +62,37 @@ async function getWorker(onProgress) {
  */
 export async function recognize(canvas, onProgress) {
   const worker = await getWorker(onProgress);
-  const prepared = preprocess(canvas);
+  const { canvas: prepared, zoom } = preprocess(canvas);
 
   const { data } = await worker.recognize(prepared, {}, { blocks: true, text: true });
-  return { text: data.text || '', lines: extractLines(data) };
+  // Boxes come back in the enlarged image's coordinates; the parser compares
+  // them against each other, so put them back on the original scale.
+  return { text: data.text || '', lines: extractLines(data, zoom) };
 }
+
+/** Below this, small print falls under the x-height Tesseract wants. */
+const MIN_LONG_SIDE = 1200;
 
 /**
  * Grayscale plus a percentile contrast stretch. Wine labels are frequently
  * cream-on-cream or gold-on-black, and Tesseract's own thresholding does much
  * better once the range is opened up.
+ *
+ * A small label is enlarged first: a photo taken from across the table can put
+ * the small print below the size Tesseract can resolve, and upscaling before
+ * recognition costs far less than the reading it recovers.
  */
 function preprocess(source) {
+  const longSide = Math.max(source.width, source.height);
+  const zoom = longSide < MIN_LONG_SIDE ? Math.min(2, MIN_LONG_SIDE / longSide) : 1;
+
   const canvas = document.createElement('canvas');
-  canvas.width = source.width;
-  canvas.height = source.height;
+  canvas.width = Math.round(source.width * zoom);
+  canvas.height = Math.round(source.height * zoom);
 
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  ctx.drawImage(source, 0, 0);
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
 
   const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const px = image.data;
@@ -91,20 +104,22 @@ function preprocess(source) {
     histogram[grey] += 1;
   }
 
+  // Stretch to the 2nd–98th percentile unconditionally. This used to be skipped
+  // whenever the range was already wide, which meant a photo with both a
+  // specular highlight and a shadow — the common case on a glossy bottle — was
+  // passed through untouched despite most of its text sitting in a narrow band.
   const total = px.length / 4;
   const low = percentile(histogram, total, 0.02);
   const high = percentile(histogram, total, 0.98);
   const span = Math.max(1, high - low);
 
-  if (span < 250) {
-    for (let i = 0; i < px.length; i += 4) {
-      const v = Math.min(255, Math.max(0, ((px[i] - low) * 255) / span));
-      px[i] = px[i + 1] = px[i + 2] = v;
-    }
+  for (let i = 0; i < px.length; i += 4) {
+    const v = Math.min(255, Math.max(0, ((px[i] - low) * 255) / span));
+    px[i] = px[i + 1] = px[i + 2] = v;
   }
 
   ctx.putImageData(image, 0, 0);
-  return canvas;
+  return { canvas, zoom };
 }
 
 function percentile(histogram, total, fraction) {
@@ -121,8 +136,9 @@ function percentile(histogram, total, fraction) {
  * Flatten Tesseract's block/paragraph/line tree into the shape the parser
  * wants. Falls back to plain text when block output is unavailable.
  */
-function extractLines(data) {
+function extractLines(data, zoom = 1) {
   const lines = [];
+  const back = (v) => (v || 0) / zoom;
 
   for (const block of data.blocks || []) {
     for (const paragraph of block.paragraphs || []) {
@@ -132,10 +148,10 @@ function extractLines(data) {
         const box = line.bbox || {};
         lines.push({
           text,
-          height: (box.y1 - box.y0) || 0,
-          top: box.y0 || 0,
-          left: box.x0 || 0,
-          right: box.x1 || 0,
+          height: back(box.y1 - box.y0),
+          top: back(box.y0),
+          left: back(box.x0),
+          right: back(box.x1),
           confidence: line.confidence ?? 0,
         });
       }

@@ -1,0 +1,11 @@
+{
+  "name": "label-scanner",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Offline PWA that turns a wine label photo into an Obsidian Wine note",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/",
+    "serve": "python3 -m http.server 8000"
+  }
+}

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#2b0a14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Label Scanner</title>
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="./icons/icon-192.png">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<link rel="stylesheet" href="./css/app.css">
+</head>
+<body data-screen="home">
+
+<!-- ─── Home / vault status ─────────────────────────────────────────── -->
+<section class="screen" data-name="home">
+  <header class="topbar">
+    <h1>Label&nbsp;Scanner</h1>
+  </header>
+
+  <div class="scroll">
+    <div class="card" id="vault-card">
+      <div class="card-head">
+        <span class="dot" id="vault-dot"></span>
+        <h2>Vault</h2>
+      </div>
+      <p class="muted" id="vault-status">Checking…</p>
+      <button class="btn" id="btn-connect-vault">Connect vault</button>
+    </div>
+
+    <div class="card" id="ocr-card">
+      <div class="card-head">
+        <span class="dot" id="ocr-dot"></span>
+        <h2>Offline OCR</h2>
+      </div>
+      <p class="muted" id="ocr-status">Checking…</p>
+      <div class="bar" id="ocr-bar" hidden><i></i></div>
+      <button class="btn btn-quiet" id="btn-cache-ocr" hidden>Download for offline use</button>
+    </div>
+  </div>
+
+  <footer class="actions">
+    <button class="btn btn-primary btn-big" id="btn-new-bottle">New bottle</button>
+  </footer>
+</section>
+
+<!-- ─── Capture ─────────────────────────────────────────────────────── -->
+<section class="screen" data-name="capture">
+  <header class="topbar">
+    <button class="btn-icon" id="btn-capture-back" aria-label="Back">‹</button>
+    <h1 id="capture-title">Photograph the label</h1>
+  </header>
+
+  <div class="stage stage-dark">
+    <video id="video" playsinline muted autoplay></video>
+    <p class="overlay-note" id="capture-hint" hidden></p>
+  </div>
+
+  <footer class="actions actions-row">
+    <button class="btn btn-quiet" id="btn-gallery">Gallery</button>
+    <button class="shutter" id="btn-shutter" aria-label="Take photo"></button>
+    <span class="spacer"></span>
+  </footer>
+  <input type="file" id="file-input" accept="image/*" hidden>
+</section>
+
+<!-- ─── Crop ────────────────────────────────────────────────────────── -->
+<section class="screen" data-name="crop">
+  <header class="topbar">
+    <button class="btn-icon" id="btn-crop-back" aria-label="Back">‹</button>
+    <h1>Drag to the label edges</h1>
+  </header>
+
+  <div class="stage stage-dark" id="crop-stage">
+    <canvas id="crop-canvas"></canvas>
+  </div>
+
+  <footer class="actions actions-row">
+    <button class="btn btn-quiet" id="btn-crop-reset">Reset</button>
+    <button class="btn btn-primary" id="btn-crop-done">Read label</button>
+  </footer>
+</section>
+
+<!-- ─── Review ──────────────────────────────────────────────────────── -->
+<section class="screen" data-name="review">
+  <header class="topbar">
+    <button class="btn-icon" id="btn-review-back" aria-label="Back">‹</button>
+    <h1>Check the details</h1>
+  </header>
+
+  <div class="scroll">
+    <div class="thumbs">
+      <figure class="thumb">
+        <img id="thumb-label" alt="Flattened label">
+        <figcaption>Label</figcaption>
+      </figure>
+      <figure class="thumb thumb-add" id="food-slot">
+        <img id="thumb-food" alt="Food photo" hidden>
+        <button class="thumb-btn" id="btn-add-food">＋<span>Food photo</span></button>
+        <button class="thumb-remove" id="btn-remove-food" hidden aria-label="Remove food photo">×</button>
+        <figcaption>Food</figcaption>
+      </figure>
+    </div>
+
+    <div class="progress" id="ocr-progress" hidden>
+      <div class="bar"><i></i></div>
+      <p class="muted" id="ocr-progress-label">Reading label…</p>
+    </div>
+
+    <form id="wine-form" autocomplete="off"></form>
+  </div>
+
+  <footer class="actions">
+    <button class="btn btn-primary btn-big" id="btn-save">Save to vault</button>
+    <p class="err" id="save-error" hidden></p>
+  </footer>
+</section>
+
+<!-- ─── Saved ───────────────────────────────────────────────────────── -->
+<section class="screen" data-name="saved">
+  <div class="done">
+    <div class="tick">✓</div>
+    <h2 id="saved-title">Saved</h2>
+    <p class="muted mono" id="saved-path"></p>
+  </div>
+  <footer class="actions">
+    <button class="btn btn-primary btn-big" id="btn-another">Scan another</button>
+    <button class="btn btn-quiet" id="btn-home">Done</button>
+  </footer>
+</section>
+
+<div class="toast" id="toast" hidden></div>
+
+<script type="module" src="./js/app.js"></script>
+</body>
+</html>

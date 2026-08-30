@@ -185,6 +185,25 @@ export function warpCylinder(source, points, width, height) {
   });
 }
 
+/**
+ * Points along the edge from `left` to `right` through `middle`, for drawing the
+ * same curve the unwrap samples. `count` points, endpoints included.
+ */
+export function edgeArc(left, middle, right, count = 32) {
+  const e = ellipseThrough(left, middle, right);
+  const points = [];
+  for (let i = 0; i < count; i++) {
+    const phi = (1 - i / (count - 1)) * Math.PI;
+    const cos = Math.cos(phi);
+    const sin = Math.sin(phi);
+    points.push({
+      x: e.cx + e.ax * cos + e.bx * sin,
+      y: e.cy + e.ay * cos + e.by * sin,
+    });
+  }
+  return points;
+}
+
 /** The half-ellipse passing through `left` at φ=π, `middle` at φ=π/2, `right` at φ=0. */
 function ellipseThrough(left, middle, right) {
   const cx = (left.x + right.x) / 2;

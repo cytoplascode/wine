@@ -4,7 +4,7 @@ export const $ = (sel) => document.querySelector(sel);
 
 export const state = {
   labelBitmap: null,   // ImageBitmap straight from camera or gallery
-  corners: null,       // 4 points in source-image pixels
+  cropPoints: null,    // the crop handles, in source-image pixels
   flattened: null,     // { canvas, blob } after perspective correction
   foodBlob: null,
   ocrText: '',
@@ -15,7 +15,7 @@ export const state = {
 export function resetCapture() {
   if (state.labelBitmap) state.labelBitmap.close();
   state.labelBitmap = null;
-  state.corners = null;
+  state.cropPoints = null;
   state.flattened = null;
   state.foodBlob = null;
   state.ocrText = '';

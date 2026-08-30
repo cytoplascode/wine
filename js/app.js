@@ -22,7 +22,7 @@ async function handlePhoto(bitmap, mode) {
   }
   if (state.labelBitmap) state.labelBitmap.close();
   state.labelBitmap = bitmap;
-  state.corners = null;
+  state.cropPoints = null;
   go('crop');
 }
 
@@ -30,7 +30,7 @@ async function handlePhoto(bitmap, mode) {
 
 onEnter('capture', (mode) => startCapture(mode || 'label'));
 onLeave('capture', stopCapture);
-onEnter('crop', () => crop.showImage(state.labelBitmap, state.corners));
+onEnter('crop', () => crop.showImage(state.labelBitmap, state.cropPoints));
 
 /* ── Flattening ─────────────────────────────────────────────────────── */
 
@@ -44,7 +44,7 @@ async function flattenAndReview() {
   await new Promise((resolve) => requestAnimationFrame(resolve));
 
   try {
-    state.corners = crop.getCorners();
+    state.cropPoints = crop.getPoints();
     state.flattened = await crop.flatten();
 
     if (labelUrl) URL.revokeObjectURL(labelUrl);

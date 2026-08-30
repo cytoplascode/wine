@@ -69,16 +69,23 @@
 <section class="screen" data-name="crop">
   <header class="topbar">
     <button class="btn-icon" id="btn-crop-back" aria-label="Back">‹</button>
-    <h1>Drag to the label edges</h1>
+    <h1>Drag to the edges</h1>
+    <div class="segmented" role="group" aria-label="Label shape">
+      <button type="button" id="btn-mode-curved" aria-pressed="true">Curved</button>
+      <button type="button" id="btn-mode-flat" aria-pressed="false">Flat</button>
+    </div>
   </header>
 
   <div class="stage stage-dark" id="crop-stage">
     <canvas id="crop-canvas"></canvas>
   </div>
 
-  <footer class="actions actions-row">
-    <button class="btn btn-quiet" id="btn-crop-reset">Reset</button>
-    <button class="btn btn-primary" id="btn-crop-done">Read label</button>
+  <footer class="actions">
+    <p class="muted hint" id="crop-hint"></p>
+    <div class="actions-row">
+      <button class="btn btn-quiet" id="btn-crop-reset">Reset</button>
+      <button class="btn btn-primary" id="btn-crop-done">Read label</button>
+    </div>
   </footer>
 </section>
 

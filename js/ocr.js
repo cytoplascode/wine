@@ -134,6 +134,8 @@ function extractLines(data) {
           text,
           height: (box.y1 - box.y0) || 0,
           top: box.y0 || 0,
+          left: box.x0 || 0,
+          right: box.x1 || 0,
           confidence: line.confidence ?? 0,
         });
       }
@@ -146,5 +148,5 @@ function extractLines(data) {
     .split('\n')
     .map((text) => text.replace(/\s+/g, ' ').trim())
     .filter(Boolean)
-    .map((text, i) => ({ text, height: 0, top: i, confidence: 0 }));
+    .map((text, i) => ({ text, height: 0, top: i, left: 0, right: 0, confidence: 0 }));
 }

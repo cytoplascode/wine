@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { parseLabel, normalize, mergeWrappedLines, isNoise, levenshtein } from '../js/parse.js';
+import {
+  parseLabel, normalize, mergeWrappedLines, joinRowFragments,
+  looksLikeName, isNoise, levenshtein,
+} from '../js/parse.js';
 
 const NOW = new Date('2026-08-30T00:00:00Z');
 
@@ -59,6 +62,74 @@ test('lines of very different size are left alone', () => {
     { text: 'CHÂTEAU LA POMPE', height: 50, top: 20 },
   ]);
   assert.equal(merged.length, 2);
+});
+
+/* ── Fragments ──────────────────────────────────────────────────────── */
+
+test('a line split across the row is put back together', () => {
+  // Exactly what a curved label produced before the unwrap landed.
+  const pieces = [
+    { text: 'PHE', height: 26, top: 700, left: 300, right: 360, confidence: 89 },
+    { text: 'APPE', height: 26, top: 702, left: 60, right: 130, confidence: 81 },
+    { text: 'LLATION SAINT-ESTE', height: 26, top: 701, left: 132, right: 298, confidence: 90 },
+  ];
+  const rows = joinRowFragments(pieces);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].text, 'APPE LLATION SAINT-ESTE PHE');
+  assert.equal(rows[0].confidence, 81, 'a row is only as trustworthy as its worst piece');
+});
+
+test('separate rows are left separate', () => {
+  const rows = joinRowFragments([
+    { text: 'CHÂTEAU', height: 50, top: 100, left: 50, right: 400, confidence: 96 },
+    { text: 'MONTROSE', height: 50, top: 170, left: 40, right: 420, confidence: 95 },
+  ]);
+  assert.equal(rows.length, 2);
+});
+
+test('words far apart on a row are not glued together', () => {
+  const rows = joinRowFragments([
+    { text: 'LEFT', height: 20, top: 100, left: 0, right: 60, confidence: 90 },
+    { text: 'RIGHT', height: 20, top: 100, left: 800, right: 880, confidence: 90 },
+  ]);
+  assert.equal(rows.length, 2);
+});
+
+test('without bounding boxes the lines are passed through untouched', () => {
+  const lines = [{ text: 'A', height: 0, top: 0, left: 0, right: 0 }];
+  assert.deepEqual(joinRowFragments(lines), lines);
+});
+
+/* ── Name plausibility ──────────────────────────────────────────────── */
+
+test('debris is not mistaken for a name', () => {
+  assert.equal(looksLikeName('VOL'), false);
+  assert.equal(looksLikeName('750 Mb'), false);
+  assert.equal(looksLikeName('13%'), false);
+  assert.equal(looksLikeName('AU'), false);
+  assert.equal(looksLikeName('750 ML'), false);
+  assert.equal(looksLikeName('2016'), false);
+  assert.equal(looksLikeName('Réserve', 30), false, 'a low-confidence read is not trusted');
+});
+
+test('real names are accepted', () => {
+  assert.equal(looksLikeName('Cuvée Saint-Julien'), true);
+  assert.equal(looksLikeName('MONTROSE'), true);
+  assert.equal(looksLikeName('Clos des Papes'), true);
+});
+
+test('leftover debris leaves WineName empty rather than filling it', () => {
+  const { fields } = parseLabel({
+    lines: [
+      { text: 'CHATEAU MONTROSE', height: 50, top: 100, left: 40, right: 400, confidence: 96 },
+      { text: '2016', height: 40, top: 200, left: 180, right: 260, confidence: 96 },
+      { text: 'VOL', height: 18, top: 300, left: 100, right: 140, confidence: 80 },
+      { text: '750 Mb', height: 18, top: 340, left: 100, right: 160, confidence: 70 },
+    ],
+  }, NOW);
+  assert.equal(fields.Winemaker, 'CHATEAU MONTROSE');
+  assert.equal(fields.Vintage, '2016');
+  assert.equal(fields.WineName, undefined);
 });
 
 /* ── Vintage ────────────────────────────────────────────────────────── */

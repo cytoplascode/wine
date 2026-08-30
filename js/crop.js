@@ -1,21 +1,33 @@
-/* Crop screen: four draggable corners over the captured photo, and the
- * flattening step that turns the quad they enclose into a rectangle. */
+/* Crop screen: draggable handles over the captured photo, and the step that
+ * flattens what they enclose.
+ *
+ * Two shapes, because neither is right for every bottle. "Curved" unwraps the
+ * label off the cylinder using six handles; "Flat" is a plain four-corner
+ * perspective correction. Measured against modelled bottle photographs, the
+ * unwrap wins comfortably on a label that wraps most of the front, and loses on
+ * a small label on a fat bottle, where it over-corrects.
+ */
 
 import { $, canvasToBlob } from './ui.js';
-import { orderQuad, outputSize, warpQuad, MAX_SIDE } from './warp.js';
+import {
+  orderQuad, outputSize, warpQuad,
+  cylinderSize, warpCylinder, edgeArc, MAX_SIDE,
+} from './warp.js';
 
 const HANDLE_RADIUS = 13;   // CSS px — drawn size
 const GRAB_RADIUS = 30;     // CSS px — touch target, comfortably past a fingertip
-const INSET = 0.1;          // corners start 10% in from each edge
+const INSET = 0.1;          // handles start 10% in from each edge
+const BULGE = 0.035;        // default curve on the top and bottom edges
 
-/** Never sample from more pixels than the flattened result can use. A 12 MP
- *  photo would otherwise mean a 48 MB pixel buffer for no added detail. */
-const clampSourceScale = (scale) => Math.min(1, scale);
+/** Indices into `points`: A, B, C, D, E, F. */
+const TL = 0; const TM = 1; const TR = 2; const BR = 3; const BM = 4; const BL = 5;
+const CORNERS = [TL, TR, BR, BL];
 
 let bitmap = null;
-let corners = null;         // 4 points in source-image pixels
+let points = null;          // 6 points in source-image pixels
+let mode = 'curved';        // 'curved' | 'flat'
 let dragging = -1;
-let view = { scale: 1 };    // image pixels -> canvas pixels
+let view = { scale: 1, dpr: 1 };
 
 export function initCrop() {
   const canvas = $('#crop-canvas');
@@ -23,32 +35,62 @@ export function initCrop() {
   canvas.addEventListener('pointermove', onPointerMove);
   canvas.addEventListener('pointerup', onPointerUp);
   canvas.addEventListener('pointercancel', onPointerUp);
-  $('#btn-crop-reset').addEventListener('click', resetCorners);
+  $('#btn-crop-reset').addEventListener('click', resetPoints);
+  $('#btn-mode-curved').addEventListener('click', () => setMode('curved'));
+  $('#btn-mode-flat').addEventListener('click', () => setMode('flat'));
+  renderMode();
 }
 
-export function showImage(nextBitmap, savedCorners) {
+export function showImage(nextBitmap, saved) {
   bitmap = nextBitmap;
   if (!bitmap) return;
-  corners = savedCorners || defaultCorners();
+  points = saved || defaultPoints();
   layout();
   draw();
 }
 
-export function getCorners() { return corners; }
+export function getPoints() { return points; }
+export function getMode() { return mode; }
 
-function defaultCorners() {
+function setMode(next) {
+  mode = next;
+  renderMode();
+  if (bitmap) draw();
+}
+
+function renderMode() {
+  $('#btn-mode-curved').setAttribute('aria-pressed', String(mode === 'curved'));
+  $('#btn-mode-flat').setAttribute('aria-pressed', String(mode === 'flat'));
+  $('#crop-hint').textContent = mode === 'curved'
+    ? 'Put the middle handles on the label’s curved top and bottom edges.'
+    : 'Four corners, for a flat label or a straight-on photo.';
+}
+
+function defaultPoints() {
   const x0 = bitmap.width * INSET;
   const x1 = bitmap.width * (1 - INSET);
   const y0 = bitmap.height * INSET;
   const y1 = bitmap.height * (1 - INSET);
-  return [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
+  const mx = (x0 + x1) / 2;
+  const bulge = bitmap.height * BULGE;
+  return [
+    { x: x0, y: y0 },            // A  top-left
+    { x: mx, y: y0 - bulge },    // B  top-middle, bowed up
+    { x: x1, y: y0 },            // C  top-right
+    { x: x1, y: y1 },            // D  bottom-right
+    { x: mx, y: y1 + bulge },    // E  bottom-middle, bowed down
+    { x: x0, y: y1 },            // F  bottom-left
+  ];
 }
 
-function resetCorners() {
+function resetPoints() {
   if (!bitmap) return;
-  corners = defaultCorners();
+  points = defaultPoints();
   draw();
 }
+
+/** Handles the current mode lets you touch. */
+const activeHandles = () => (mode === 'curved' ? [TL, TM, TR, BR, BM, BL] : CORNERS);
 
 /* ── Layout and painting ────────────────────────────────────────────── */
 
@@ -66,8 +108,28 @@ function layout() {
   canvas.width = Math.round(drawW * dpr);
   canvas.height = Math.round(drawH * dpr);
 
-  // The canvas is sized to the fitted image, so image and canvas share an origin.
   view = { scale: scale * dpr, dpr };
+}
+
+/** Trace the crop outline: curved arcs top and bottom, or a plain quad. */
+function tracePath(ctx) {
+  const toCanvasPoint = (p) => toCanvas(p.x, p.y);
+
+  if (mode === 'flat') {
+    const quad = CORNERS.map((i) => toCanvasPoint(points[i]));
+    ctx.moveTo(quad[0].x, quad[0].y);
+    for (let i = 1; i < quad.length; i++) ctx.lineTo(quad[i].x, quad[i].y);
+    ctx.closePath();
+    return;
+  }
+
+  const top = edgeArc(points[TL], points[TM], points[TR]).map(toCanvasPoint);
+  const bottom = edgeArc(points[BL], points[BM], points[BR]).map(toCanvasPoint);
+
+  ctx.moveTo(top[0].x, top[0].y);
+  for (let i = 1; i < top.length; i++) ctx.lineTo(top[i].x, top[i].y);
+  for (let i = bottom.length - 1; i >= 0; i--) ctx.lineTo(bottom[i].x, bottom[i].y);
+  ctx.closePath();
 }
 
 function draw() {
@@ -78,32 +140,28 @@ function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
 
-  const pts = corners.map((p) => toCanvas(p.x, p.y));
-
-  // Dim everything outside the quad: full rect and quad in one even-odd path.
+  // Dim everything outside the crop: the frame and the shape in one even-odd path.
   ctx.beginPath();
   ctx.rect(0, 0, canvas.width, canvas.height);
-  ctx.moveTo(pts[0].x, pts[0].y);
-  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-  ctx.closePath();
+  tracePath(ctx);
   ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
   ctx.fill('evenodd');
 
   ctx.beginPath();
-  ctx.moveTo(pts[0].x, pts[0].y);
-  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-  ctx.closePath();
+  tracePath(ctx);
   ctx.strokeStyle = '#c8324f';
   ctx.lineWidth = 3 * dpr;
   ctx.stroke();
 
-  for (const p of pts) {
+  for (const i of activeHandles()) {
+    const p = toCanvas(points[i].x, points[i].y);
+    const middle = i === TM || i === BM;
     ctx.beginPath();
-    ctx.arc(p.x, p.y, HANDLE_RADIUS * dpr, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.arc(p.x, p.y, (middle ? HANDLE_RADIUS - 2 : HANDLE_RADIUS) * dpr, 0, Math.PI * 2);
+    ctx.fillStyle = middle ? 'rgba(200, 50, 79, 0.9)' : 'rgba(255, 255, 255, 0.9)';
     ctx.fill();
     ctx.lineWidth = 4 * dpr;
-    ctx.strokeStyle = '#c8324f';
+    ctx.strokeStyle = middle ? '#fff' : '#c8324f';
     ctx.stroke();
   }
 }
@@ -123,30 +181,42 @@ function toCanvasPixels(clientX, clientY) {
 
 function onPointerDown(event) {
   if (!bitmap) return;
-  const point = toCanvasPixels(event.clientX, event.clientY);
+  const at = toCanvasPixels(event.clientX, event.clientY);
   const limit = GRAB_RADIUS * view.dpr;
 
   let best = -1;
   let bestDistance = Infinity;
-  corners.forEach((corner, i) => {
-    const c = toCanvas(corner.x, corner.y);
-    const d = Math.hypot(c.x - point.x, c.y - point.y);
+  for (const i of activeHandles()) {
+    const c = toCanvas(points[i].x, points[i].y);
+    const d = Math.hypot(c.x - at.x, c.y - at.y);
     if (d < bestDistance) { bestDistance = d; best = i; }
-  });
+  }
 
   if (bestDistance > limit) return;
   dragging = best;
+  rememberChords();
   event.target.setPointerCapture(event.pointerId);
   event.preventDefault();
 }
 
 function onPointerMove(event) {
   if (dragging < 0) return;
-  const point = toCanvasPixels(event.clientX, event.clientY);
-  corners[dragging] = {
-    x: clamp(point.x / view.scale, 0, bitmap.width),
-    y: clamp(point.y / view.scale, 0, bitmap.height),
+  const at = toCanvasPixels(event.clientX, event.clientY);
+  const x = at.x / view.scale;
+  const y = at.y / view.scale;
+
+  // Middle handles may sit outside the frame: the curve of a label often bows
+  // past the top or bottom of a tightly framed photo.
+  const slack = bitmap.height * 0.25;
+  points[dragging] = {
+    x: clamp(x, 0, bitmap.width),
+    y: clamp(y, -slack, bitmap.height + slack),
   };
+
+  // Dragging a corner carries its edge's middle handle along, so the bow the
+  // user set is kept instead of being left stranded off the edge.
+  if (dragging !== TM && dragging !== BM) carryMiddles();
+
   draw();
   event.preventDefault();
 }
@@ -157,28 +227,60 @@ function onPointerUp(event) {
   try { event.target.releasePointerCapture(event.pointerId); } catch { /* already gone */ }
 }
 
+const EDGES = [[TM, TL, TR], [BM, BL, BR]];
+const chordMidpoint = ([, left, right]) => ({
+  x: (points[left].x + points[right].x) / 2,
+  y: (points[left].y + points[right].y) / 2,
+});
+
+let chordsAtDragStart = null;
+
+function rememberChords() {
+  chordsAtDragStart = EDGES.map(chordMidpoint);
+}
+
+function carryMiddles() {
+  if (!chordsAtDragStart) return;
+  EDGES.forEach((edge, i) => {
+    const now = chordMidpoint(edge);
+    const before = chordsAtDragStart[i];
+    const middle = points[edge[0]];
+    points[edge[0]] = { x: middle.x + (now.x - before.x), y: middle.y + (now.y - before.y) };
+    chordsAtDragStart[i] = now;
+  });
+}
+
 const clamp = (v, lo, hi) => (v < lo ? lo : (v > hi ? hi : v));
 
 /* ── Flattening ─────────────────────────────────────────────────────── */
 
 /**
- * Warp the quad out of the source photo into an upright rectangle.
+ * Warp what the handles enclose into an upright rectangle.
  * Returns `{ canvas, blob }`.
  */
 export async function flatten() {
-  const quad = orderQuad(corners);
-  corners = quad;
+  const curved = mode === 'curved';
 
-  const size = outputSize(quad, MAX_SIDE);
-  const rawWidth = Math.max(
-    Math.hypot(quad[1].x - quad[0].x, quad[1].y - quad[0].y),
-    Math.hypot(quad[2].x - quad[3].x, quad[2].y - quad[3].y),
+  let shape;
+  let size;
+  if (curved) {
+    shape = points;
+    size = cylinderSize(points, MAX_SIDE);
+  } else {
+    shape = orderQuad(CORNERS.map((i) => points[i]));
+    CORNERS.forEach((slot, i) => { points[slot] = shape[i]; });
+    size = outputSize(shape, MAX_SIDE);
+  }
+
+  // Read back only the bounding box, and only at the resolution the output can
+  // use. Height is the honest yardstick: unrolling stretches width on purpose.
+  const rawHeight = Math.max(
+    Math.hypot(points[TL].x - points[BL].x, points[TL].y - points[BL].y),
+    Math.hypot(points[TR].x - points[BR].x, points[TR].y - points[BR].y),
   );
-  const scale = clampSourceScale(size.width / rawWidth);
+  const scale = Math.min(1, size.height / Math.max(1, rawHeight));
 
-  // Read back only the quad's bounding box, at only the resolution the output
-  // can actually use.
-  const box = boundingBox(quad);
+  const box = boundingBox(shape);
   const srcCanvas = document.createElement('canvas');
   srcCanvas.width = Math.max(1, Math.round(box.width * scale));
   srcCanvas.height = Math.max(1, Math.round(box.height * scale));
@@ -190,8 +292,10 @@ export async function flatten() {
   );
   const source = srcCtx.getImageData(0, 0, srcCanvas.width, srcCanvas.height);
 
-  const local = quad.map((p) => ({ x: (p.x - box.x) * scale, y: (p.y - box.y) * scale }));
-  const warped = warpQuad(source, local, size.width, size.height);
+  const local = shape.map((p) => ({ x: (p.x - box.x) * scale, y: (p.y - box.y) * scale }));
+  const warped = curved
+    ? warpCylinder(source, local, size.width, size.height)
+    : warpQuad(source, local, size.width, size.height);
 
   const canvas = document.createElement('canvas');
   canvas.width = warped.width;
@@ -203,9 +307,9 @@ export async function flatten() {
   return { canvas, blob: await canvasToBlob(canvas) };
 }
 
-function boundingBox(quad) {
-  const xs = quad.map((p) => p.x);
-  const ys = quad.map((p) => p.y);
+function boundingBox(shape) {
+  const xs = shape.map((p) => p.x);
+  const ys = shape.map((p) => p.y);
   const x = clamp(Math.floor(Math.min(...xs)), 0, bitmap.width);
   const y = clamp(Math.floor(Math.min(...ys)), 0, bitmap.height);
   const right = clamp(Math.ceil(Math.max(...xs)), 0, bitmap.width);

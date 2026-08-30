@@ -52,7 +52,9 @@ export function parseLabel({ text = '', lines = [] } = {}, now = new Date()) {
     ? lines
     : text.split('\n').map((t, i) => ({ text: t.trim(), height: 0, top: i }));
 
-  const merged = mergeWrappedLines(source.filter((line) => line.text.trim()));
+  const merged = mergeWrappedLines(
+    joinRowFragments(source.filter((line) => line.text.trim())),
+  );
   const normalizedLines = merged.map((line) => normalize(line.text));
   const fullText = normalizedLines.join(' ');
 
@@ -120,6 +122,59 @@ export function parseLabel({ text = '', lines = [] } = {}, now = new Date()) {
  * name arrives as "CHÂTEAU LA" + "POMPE". Rejoin neighbours of similar size
  * that sit tight against each other.
  */
+/**
+ * Rejoin pieces of one visual line that recognition split horizontally.
+ *
+ * Curvature and glare make Tesseract break a single line into several, so
+ * "APPELLATION SAINT-ESTÈPHE" arrives as "APPE", "LLATION SAINT-ESTE", "PHE",
+ * each with its own box. Anything sharing a row and sitting close enough is
+ * reassembled left to right before the field heuristics see it.
+ */
+export function joinRowFragments(lines) {
+  if (!lines.some((line) => line.right > line.left)) return lines.map((line) => ({ ...line }));
+
+  const remaining = lines.map((line) => ({ ...line }));
+  const rows = [];
+
+  while (remaining.length) {
+    const seed = remaining.shift();
+    const row = [seed];
+
+    for (let i = remaining.length - 1; i >= 0; i--) {
+      if (row.some((member) => sameRow(member, remaining[i]))) {
+        row.push(remaining.splice(i, 1)[0]);
+      }
+    }
+
+    row.sort((a, b) => a.left - b.left);
+    rows.push({
+      text: row.map((piece) => piece.text).join(' ').replace(/\s+/g, ' ').trim(),
+      height: Math.max(...row.map((piece) => piece.height)),
+      top: Math.min(...row.map((piece) => piece.top)),
+      left: Math.min(...row.map((piece) => piece.left)),
+      right: Math.max(...row.map((piece) => piece.right)),
+      confidence: Math.min(...row.map((piece) => piece.confidence ?? 0)),
+    });
+  }
+
+  return rows.sort((a, b) => a.top - b.top);
+}
+
+function sameRow(a, b) {
+  if (!a.height || !b.height) return false;
+
+  const ratio = a.height / b.height;
+  if (ratio < 0.6 || ratio > 1.67) return false;
+
+  // Vertical spans must genuinely overlap, not merely be near each other.
+  const overlap = Math.min(a.top + a.height, b.top + b.height) - Math.max(a.top, b.top);
+  if (overlap < Math.min(a.height, b.height) * 0.5) return false;
+
+  // And they must be side by side, not the same words found twice.
+  const gap = Math.max(a.left, b.left) - Math.min(a.right, b.right);
+  return gap < Math.max(a.height, b.height) * 2.5;
+}
+
 export function mergeWrappedLines(lines) {
   if (!lines.some((line) => line.height > 0)) return lines.map((line) => ({ ...line }));
 
@@ -353,12 +408,39 @@ function findWineName(lines, normalizedLines, claimed) {
   return tallest ? { name: tidy(tallest.text), lineIndex: tallest.index } : null;
 }
 
+/**
+ * Could this line be somebody's name, or is it wreckage?
+ *
+ * The tallest-unclaimed fallback will otherwise happily nominate whatever is
+ * left over — "VOL", "750 Mb", half an appellation — and `WineName` feeds
+ * `Name`, which feeds the note's filename. An empty field is much better than
+ * a wrong one, and `composeName` already collapses gracefully around a gap.
+ */
+export function looksLikeName(text, confidence = 100) {
+  const normalized = normalize(text);
+  if (!normalized || isNoise(text) || isYearOnly(text)) return false;
+  if (confidence && confidence < 55) return false;
+
+  const letters = normalized.replace(/[^a-z]/g, '');
+  if (letters.length < 4) return false;
+
+  // Mostly digits is a measurement or a code, not a name.
+  const digits = normalized.replace(/[^0-9]/g, '').length;
+  if (digits > letters.length) return false;
+
+  // Units and other stray tokens that survive on their own.
+  const words = normalized.split(' ').filter(Boolean);
+  const STRAY = new Set(['vol', 'ml', 'cl', 'alc', 'abv', 'au', 'de', 'du', 'la', 'le', 'el']);
+  if (words.length === 1 && (words[0].length < 4 || STRAY.has(words[0]))) return false;
+
+  return words.some((word) => word.length >= 3);
+}
+
 function tallestUnclaimed(lines, claimed) {
   let best = null;
   lines.forEach((line, index) => {
     if (claimed.has(index)) return;
-    if (!line.text.trim() || isYearOnly(line.text)) return;
-    if (normalize(line.text).length < 3) return;
+    if (!looksLikeName(line.text, line.confidence)) return;
     if (!best || line.height > best.height) best = { ...line, index };
   });
   return best;

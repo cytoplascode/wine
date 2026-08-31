@@ -139,8 +139,10 @@ how accurately the handles were placed, not by the wrap.
 Fields the app guessed are marked **AUTO**; editing one clears the mark. **Drink date** is one
 of them — pre-filled from the label photo's own date (its EXIF timestamp for a gallery import,
 today's date for a fresh camera shot), on the idea that a label is usually photographed at or
-near the moment the bottle is opened. It lives under **Rating** now, not **Cellar**: it is a
-record of the tasting, not of the stock. One bottle per pass — there is no batch import.
+near the moment the bottle is opened. It lives under **Rating**, not **Cellar**: it is a record
+of the tasting, not of the stock — and that section opens itself on a fresh scan, since a
+guess folded away where nothing shows it was made looks exactly like a missing field. One
+bottle per pass — there is no batch import.
 
 ### Putting a value in the right field
 

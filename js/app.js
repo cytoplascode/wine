@@ -12,6 +12,8 @@ import { initFieldDrag } from './drag.js';
 import { emptyRecord } from './schema.js';
 import { parseLabel } from './parse.js';
 import * as vault from './vault.js';
+import * as restVault from './rest-vault.js';
+import { getMode, setMode } from './connection.js';
 import { readValues } from './form.js';
 import { save, PermissionNeeded } from './save.js';
 import {
@@ -224,27 +226,99 @@ async function saveBottle() {
 
 /* ── Vault card ─────────────────────────────────────────────────────── */
 
+/* Two backends, one card: the folder picker Chromium's File System Access
+ * API gives us, or Obsidian's own Local REST API plugin for a vault that
+ * sits somewhere a folder picker cannot reach at all — Android's per-app
+ * "App Storage", say. Whichever the user last connected is what `save()`
+ * actually uses (see connection.js); this section only has to draw
+ * whichever one is currently selected. */
+
 const vaultDot = $('#vault-dot');
 const vaultStatus = $('#vault-status');
 const vaultButton = $('#btn-connect-vault');
+const modeButton = $('#btn-vault-mode');
+const restForm = $('#rest-form');
+const restHost = $('#rest-host');
+const restPort = $('#rest-port');
+const restHttps = $('#rest-https');
+const restKey = $('#rest-key');
 
-async function renderVaultCard() {
-  const state = await vault.status();
-  const card = vault.describe(state, vault.getVaultName());
+function readRestForm() {
+  return {
+    host: restHost.value.trim() || '127.0.0.1',
+    port: Number(restPort.value) || 27123,
+    https: restHttps.checked,
+    apiKey: restKey.value.trim(),
+  };
+}
 
+function renderCard(card) {
   vaultDot.dataset.state = card.dot;
   vaultStatus.textContent = card.text;
-
   if (card.button) {
     [vaultButton.textContent, vaultButton.dataset.action] = card.button;
     vaultButton.hidden = false;
   } else {
     vaultButton.hidden = true;
   }
-  return state;
+}
+
+async function renderVaultCard() {
+  const mode = getMode();
+  restForm.hidden = mode !== 'rest';
+  modeButton.textContent = mode === 'rest'
+    ? 'Use a folder instead'
+    : "Use Obsidian's Local REST API instead";
+
+  // The Connect button reads whatever the form holds at the moment it's
+  // pressed, so its position is free to move — and it reads better after
+  // the fields it acts on than pinned above them.
+  if (mode === 'rest') restForm.insertAdjacentElement('afterend', vaultButton);
+  else vaultStatus.insertAdjacentElement('afterend', vaultButton);
+
+  if (mode === 'rest') {
+    const config = restVault.getConfig();
+    if (config) {
+      restHost.value = config.host;
+      restPort.value = config.port;
+      restHttps.checked = config.https;
+      restKey.value = config.apiKey;
+    }
+    // No live check on every visit to this screen — a failed connection
+    // surfaces at save time instead, the same way a stale folder permission
+    // does, rather than firing a network request just to draw the card.
+    renderCard(restVault.describe(config ? 'ok' : 'none', config || readRestForm()));
+    return;
+  }
+
+  const state = await vault.status();
+  renderCard(vault.describe(state, vault.getVaultName()));
 }
 
 async function onVaultButton() {
+  if (getMode() === 'rest') {
+    if (vaultButton.dataset.action === 'disconnect') {
+      await restVault.disconnect();
+      toast('Disconnected from Obsidian.');
+      renderVaultCard();
+      return;
+    }
+
+    const candidate = readRestForm();
+    if (!candidate.apiKey) {
+      toast('Enter the API key from Obsidian’s Local REST API settings.');
+      return;
+    }
+    vaultButton.disabled = true;
+    vaultButton.textContent = 'Testing…';
+    const result = await restVault.connect(candidate);
+    vaultButton.disabled = false;
+
+    toast(result === 'ok' ? 'Connected to Obsidian.' : restVault.describe(result, candidate).text);
+    renderCard(restVault.describe(result, candidate));
+    return;
+  }
+
   try {
     if (vaultButton.dataset.action === 'reconnect') {
       // requestPermission only works inside a gesture, which is why this lives
@@ -259,6 +333,11 @@ async function onVaultButton() {
   }
   renderVaultCard();
 }
+
+modeButton.addEventListener('click', () => {
+  setMode(getMode() === 'rest' ? 'folder' : 'rest');
+  renderVaultCard();
+});
 
 onEnter('home', renderVaultCard);
 
@@ -398,5 +477,5 @@ $('#btn-edit-label').addEventListener('click', () => go('crop', 'edit'));
 $('#lightbox').addEventListener('click', dismissOverlay);
 
 registerServiceWorker();
-vault.restore().then(renderVaultCard);
+Promise.all([vault.restore(), restVault.restore()]).then(renderVaultCard);
 go('home');

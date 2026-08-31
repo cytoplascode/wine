@@ -2,6 +2,8 @@
  * browser's downloads when this browser cannot write to a folder. */
 
 import * as vault from './vault.js';
+import * as restVault from './rest-vault.js';
+import { getMode } from './connection.js';
 import {
   noteBasename,
   asciiBasename,
@@ -26,6 +28,10 @@ export class PermissionNeeded extends Error {
  * Returns `{ mode: 'vault' | 'download', path }`.
  */
 export async function save({ record, labelBlob, foodBlob, ocrText }) {
+  if (getMode() === 'rest' && restVault.isConfigured()) {
+    return saveViaRest({ record, labelBlob, foodBlob, ocrText });
+  }
+
   const status = await vault.status();
 
   if (status === 'unsupported' || status === 'none') {
@@ -51,6 +57,35 @@ export async function save({ record, labelBlob, foodBlob, ocrText }) {
   const vaultName = vault.getVaultName();
   const prefix = vaultName ? `${vaultName}/` : '';
   return { mode: 'vault', path: `${prefix}${WINES_FOLDER}/${noteFilename(basename)}` };
+}
+
+/**
+ * Obsidian's own filesystem has no trouble with accented names, so unlike the
+ * folder backend this never needs the ASCII-folding probe — that exists only
+ * for Chromium's own origin-private file system.
+ */
+async function saveViaRest({ record, labelBlob, foodBlob, ocrText }) {
+  const config = restVault.getConfig();
+  const basename = await uniqueBasename(
+    noteBasename(record),
+    (candidate) => restVault.fileExists(config, `${WINES_FOLDER}/${noteFilename(candidate)}`),
+  );
+
+  const markdown = buildNote({ record, basename, hasFood: Boolean(foodBlob), ocrText });
+
+  await restVault.writeFile(config, `${WINES_FOLDER}/${labelFilename(basename)}`, labelBlob, 'image/jpeg');
+  if (foodBlob) {
+    await restVault.writeFile(config, `${WINES_FOLDER}/${foodFilename(basename)}`, foodBlob, 'image/jpeg');
+  }
+  // The note goes last, so a link can never point at an image that is not there.
+  await restVault.writeFile(
+    config,
+    `${WINES_FOLDER}/${noteFilename(basename)}`,
+    markdown,
+    'text/markdown',
+  );
+
+  return { mode: 'vault', path: `${WINES_FOLDER}/${noteFilename(basename)}` };
 }
 
 /**

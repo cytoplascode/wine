@@ -74,28 +74,6 @@ gets Obsidian's own ` 2`, ` 3` suffix rather than overwriting anything.
 On browsers without the File System Access API (Firefox Android, iOS Safari) everything up
 to and including OCR still works, and saving falls back to downloading the files.
 
-### If your vault lives in Obsidian's own "App Storage"
-
-The folder picker above is Android's Storage Access Framework, and since Android 11 that
-picker cannot browse into another app's private storage at all — not with any permission,
-because it isn't a matter of permission. If your vault sits there rather than in an ordinary
-shared folder, **Connect vault** will simply never be able to reach it.
-
-The vault card has a second mode for exactly this: **Use Obsidian's Local REST API instead**.
-Install and enable the [Local REST API](https://github.com/coddingtonbear/obsidian-local-rest-api)
-community plugin, turn on its plain HTTP server (Settings → Local REST API → Enable HTTP
-server — this avoids trusting the plugin's self-signed HTTPS certificate), and copy its API
-key into the form. The scanner never touches the filesystem in this mode at all: it sends the
-note and photos to Obsidian over `http://127.0.0.1:27123`, and Obsidian writes them with its
-own, unrestricted storage access — the same reason the folder picker cannot reach the vault is
-exactly why this route sidesteps the problem entirely. Chrome may ask a one-time "allow this
-site to access your local network" permission the first time; that is expected; it is not the
-directory-picker permission.
-
-The connection is remembered the same way the folder is — reconnect it if it ever shows as
-unreachable. **Save to vault** behaves identically either way: same note, same filenames,
-written to the same `wines/` folder.
-
 ## Using it
 
 1. Open the site and add it to your home screen.
@@ -228,13 +206,6 @@ approximation rather than restating it.
 
 `showDirectoryPicker()` cannot be driven by an automated browser, so the vault write path is
 best checked by hand against a throwaway folder before pointing it at a real vault.
-
-`rest-vault.js`'s actual HTTP conversation (`test`, `fileExists`, `writeFile`) is a plain
-function of an explicit connection object, not the module's own remembered one — deliberately,
-since that is what lets `rest-vault.test.js` drive it against a real (stub) HTTP server under
-`node --test` without ever touching IndexedDB, which only exists in a browser. `connect`,
-`restore` and `disconnect` are the only functions that persist, and — like the folder picker's
-`pick()` — are exercised by hand instead.
 
 ### Regenerating the icons
 

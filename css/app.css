@@ -317,20 +317,6 @@ body[data-screen="review"] .scroll {
 
 .card .btn { width: 100%; margin-top: 12px; }
 
-#rest-form { margin-top: 12px; }
-#rest-form .field { margin-bottom: 10px; }
-
-.check {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin: 4px 0 10px;
-  font-size: 13px;
-  color: var(--muted);
-}
-
-.check input { margin-top: 3px; flex: 0 0 auto; }
-
 .dot {
   width: 10px;
   height: 10px;

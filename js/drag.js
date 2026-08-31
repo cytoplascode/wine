@@ -147,5 +147,16 @@ function swap(from, to) {
   // Through the DOM event, so the AUTO markers and the grips update themselves
   // exactly as they would for a hand edit.
   for (const input of [a, b]) input.dispatchEvent(new Event('input', { bubbles: true }));
-  b.focus({ preventScroll: true });
+
+  // Confirmation that the swap landed, without focusing the field — a text
+  // input would pop the on-screen keyboard right after a drag gesture, which
+  // is the last thing a swap should do.
+  for (const field of [from, to]) {
+    field.classList.add('field-landed');
+    field.addEventListener(
+      'animationend',
+      () => field.classList.remove('field-landed'),
+      { once: true },
+    );
+  }
 }

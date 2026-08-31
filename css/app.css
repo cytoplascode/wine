@@ -511,6 +511,19 @@ body[data-screen="saved"]   .screen[data-name="saved"] {
   outline-offset: -1px;
 }
 
+/* Confirms a swap landed without focusing the field, which would pop the
+   on-screen keyboard right after a drag gesture. A ring rather than a
+   background change, so the field's own colour is never overwritten. */
+@keyframes field-landed {
+  from { box-shadow: 0 0 0 2px var(--accent) inset; }
+  to { box-shadow: 0 0 0 2px transparent inset; }
+}
+
+.field-landed input,
+.field-landed textarea {
+  animation: field-landed .5s ease-out;
+}
+
 .drag-chip {
   position: fixed;
   z-index: 30;

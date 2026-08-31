@@ -53,6 +53,13 @@ async function flattenAndReview() {
   try {
     state.cropPoints = crop.getPoints();
     state.flattened = await crop.flatten();
+    // A fresh flatten needs a fresh read — otherwise runOcr's guard against
+    // re-running on every re-entry to review (added a food photo, went back
+    // and forward) would just as happily skip it here, and review would show
+    // whatever the previous crop happened to read.
+    state.ocrText = '';
+    state.ocrLines = [];
+    state.fields = {};
 
     if (labelUrl) URL.revokeObjectURL(labelUrl);
     labelUrl = URL.createObjectURL(state.flattened.blob);
@@ -87,6 +94,7 @@ async function runOcr() {
   if (!state.flattened || state.ocrText) return;
 
   setValues(emptyRecord());
+  $('#raw-text').textContent = '';
   showOcrProgress(0, 'Starting the recognition engine…');
   try {
     const result = await ocr.recognize(state.flattened.canvas, (m) => {

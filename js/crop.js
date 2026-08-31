@@ -63,10 +63,7 @@ export function showImage(nextBitmap, saved) {
 export function getPoints() { return points; }
 
 function renderWrap() {
-  const degrees = Math.round((wrap * 180) / Math.PI);
-  $('#wrap-label').textContent = `Curve ${degrees}°`;
-  $('#crop-hint').textContent = 'Corners on the label’s corners, middle handles on the '
-    + 'bow of its top and bottom edges. Slide Curve until the preview reads straight.';
+  $('#wrap-label').textContent = `Curve ${Math.round((wrap * 180) / Math.PI)}°`;
 }
 
 function defaultPoints() {
@@ -229,7 +226,6 @@ function onPointerDown(event) {
 
   if (bestDistance > limit) return;
   dragging = best;
-  dodgePreview();
   rememberChords();
   event.target.setPointerCapture(event.pointerId);
   event.preventDefault();
@@ -261,21 +257,9 @@ function onPointerMove(event) {
     carryMiddles();
   }
 
-  dodgePreview();
   draw();
   drawPreview();
   event.preventDefault();
-}
-
-/** The preview floats over the photo, so it has to get out of the way of the
- *  handle being dragged rather than sit on top of it — a bottom-edge handle is
- *  exactly where it would otherwise be. */
-function dodgePreview() {
-  if (dragging < 0) return;
-  const stage = $('#crop-stage');
-  const canvas = $('#crop-canvas');
-  const y = canvas.offsetTop + (points[dragging].y * view.scale) / view.dpr;
-  $('#crop-preview').classList.toggle('preview-top', y > stage.clientHeight * 0.55);
 }
 
 /** Put a middle handle on the perpendicular through its chord's midpoint,

@@ -1,10 +1,14 @@
 /* Wiring and startup: buttons, screen hooks, service worker lifecycle. */
 
-import { $, state, go, onEnter, onLeave, toast, resetCapture, bitmapToBlob } from './ui.js';
+import {
+  $, state, go, onEnter, onLeave, toast, resetCapture, bitmapToBlob,
+  openOverlay, dismissOverlay,
+} from './ui.js';
 import { initCapture, startCapture, stopCapture } from './camera.js';
 import * as crop from './crop.js';
 import * as ocr from './ocr.js';
 import { buildForm, setValues } from './form.js';
+import { initFieldDrag } from './drag.js';
 import { emptyRecord } from './schema.js';
 import { parseLabel } from './parse.js';
 import * as vault from './vault.js';
@@ -140,6 +144,23 @@ function renderFoodThumb() {
 function removeFoodPhoto() {
   state.foodBlob = null;
   renderFoodThumb();
+}
+
+/* ── Enlarged photo ─────────────────────────────────────────────────── */
+
+/* The review thumbnails are small enough that "is that really what it says?"
+ * is unanswerable, so tapping one fills the screen with it. It is an overlay
+ * rather than a screen, but the back button still closes it. */
+function enlarge(thumbnail) {
+  if (!thumbnail.getAttribute('src')) return;
+  const view = $('#lightbox-image');
+  view.src = thumbnail.src;
+  view.alt = thumbnail.alt;
+  $('#lightbox').hidden = false;
+  openOverlay(() => {
+    $('#lightbox').hidden = true;
+    view.removeAttribute('src');
+  });
 }
 
 /* ── Saving ─────────────────────────────────────────────────────────── */
@@ -326,6 +347,7 @@ function newBottle() {
 initCapture({ onPhoto: handlePhoto });
 crop.initCrop();
 buildForm();
+initFieldDrag();
 renderLanguageChips();
 
 $('#btn-new-bottle').addEventListener('click', newBottle);
@@ -345,6 +367,9 @@ vaultButton.addEventListener('click', onVaultButton);
 $('#btn-add-food').addEventListener('click', () => go('capture', 'food'));
 $('#btn-remove-food').addEventListener('click', removeFoodPhoto);
 $('#btn-save').addEventListener('click', saveBottle);
+$('#thumb-label').addEventListener('click', (event) => enlarge(event.currentTarget));
+$('#thumb-food').addEventListener('click', (event) => enlarge(event.currentTarget));
+$('#lightbox').addEventListener('click', dismissOverlay);
 
 registerServiceWorker();
 vault.restore().then(renderVaultCard);

@@ -7,7 +7,7 @@
  * end up with a worker that never activates on a flaky mobile connection.
  */
 
-const SHELL_CACHE = 'shell-v3';
+const SHELL_CACHE = 'shell-v4';
 
 /* The OCR cache is deliberately *not* versioned with the shell. Those files are
  * vendored and immutable — a new build of Tesseract would arrive under a new
@@ -24,8 +24,10 @@ const SHELL_ASSETS = [
   './css/app.css',
   './js/app.js',
   './js/ui.js',
+  './js/nav.js',
   './js/camera.js',
   './js/crop.js',
+  './js/drag.js',
   './js/warp.js',
   './js/ocr.js',
   './js/schema.js',

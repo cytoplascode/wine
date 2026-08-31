@@ -74,12 +74,13 @@
     <h1>Drag to the edges</h1>
   </header>
 
+  <div class="preview" id="crop-preview">
+    <canvas id="preview-canvas"></canvas>
+    <span class="preview-tag">Flattened</span>
+  </div>
+
   <div class="stage stage-dark" id="crop-stage">
     <canvas id="crop-canvas"></canvas>
-    <div class="preview" id="crop-preview">
-      <canvas id="preview-canvas"></canvas>
-      <span class="preview-tag">Flattened</span>
-    </div>
   </div>
 
   <footer class="actions">
@@ -87,7 +88,6 @@
       <span id="wrap-label">Curve</span>
       <input type="range" id="wrap-slider" min="60" max="180" step="5" value="140">
     </label>
-    <p class="muted hint" id="crop-hint"></p>
     <div class="actions-row">
       <button class="btn btn-quiet" id="btn-crop-reset">Reset</button>
       <button class="btn btn-primary" id="btn-crop-done">Read label</button>
@@ -105,11 +105,11 @@
   <div class="scroll">
     <div class="thumbs">
       <figure class="thumb">
-        <img id="thumb-label" alt="Flattened label">
+        <img id="thumb-label" alt="Flattened label" title="Tap to enlarge">
         <figcaption>Label</figcaption>
       </figure>
       <figure class="thumb thumb-add" id="food-slot">
-        <img id="thumb-food" alt="Food photo" hidden>
+        <img id="thumb-food" alt="Food photo" title="Tap to enlarge" hidden>
         <button class="thumb-btn" id="btn-add-food">＋<span>Food photo</span></button>
         <button class="thumb-remove" id="btn-remove-food" hidden aria-label="Remove food photo">×</button>
         <figcaption>Food</figcaption>
@@ -121,6 +121,7 @@
       <p class="muted" id="ocr-progress-label">Reading label…</p>
     </div>
 
+    <p class="muted hint form-hint">Wrong box? Drag <b>⠿</b> onto the right field.</p>
     <form id="wine-form" autocomplete="off"></form>
 
     <details class="group">
@@ -147,6 +148,10 @@
     <button class="btn btn-quiet" id="btn-home">Done</button>
   </footer>
 </section>
+
+<div class="lightbox" id="lightbox" hidden>
+  <img id="lightbox-image" alt="">
+</div>
 
 <div class="toast" id="toast" hidden></div>
 

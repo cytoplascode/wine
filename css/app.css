@@ -580,12 +580,25 @@ body[data-screen="review"] .scroll {
   width: 44px;
   height: 30px;
   border: 0;
+  border-radius: 999px;
   background: none;
   color: var(--muted);
   font-size: 17px;
   line-height: 1;
   cursor: grab;
   touch-action: none;
+}
+
+/* Fills in behind the grip while it's held, finishing right as the drag
+   itself becomes possible — a visual match for the long-press haptic. */
+@keyframes grip-charging {
+  from { background: transparent; transform: scale(1); }
+  to   { background: var(--accent); transform: scale(1.15); }
+}
+
+.grip-pressing {
+  color: #fff;
+  animation: grip-charging 500ms ease-out forwards;   /* kept in step with LONG_PRESS_MS in drag.js */
 }
 
 .drop-target input,

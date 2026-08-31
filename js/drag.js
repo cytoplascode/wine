@@ -9,14 +9,24 @@
  * Pointer events rather than HTML5 drag-and-drop, which does not fire at all
  * on Android. Swap rather than move, because a swap is symmetrical: it never
  * destroys the value that was already there, and dragging back undoes it.
+ *
+ * The drag itself only starts after a long press, not on first touch: a plain
+ * tap on the grip — reaching past it toward a nearby control, brushing it
+ * while scrolling — used to move a value by accident. It now has to survive
+ * LONG_PRESS_MS in roughly one place, the same threshold Android's own
+ * long-press gesture uses, so the drag becomes possible right when the
+ * phone's own haptic says "you're holding this."
  */
 
 import { $ } from './ui.js';
 
-const EDGE = 72;      // px from the edge of the scroller where it starts sliding
-const SPEED = 14;     // px per frame at the very edge
+const EDGE = 72;              // px from the edge of the scroller where it starts sliding
+const SPEED = 14;             // px per frame at the very edge
+const LONG_PRESS_MS = 500;    // kept in step with the animation duration in app.css
+const PRESS_TOLERANCE = 10;   // px of drift that cancels a hold — a tap or a scroll, not a hold
 
 let drag = null;
+let pending = null;   // a hold in progress that has not yet become a drag
 let frame = 0;
 
 export function initFieldDrag() {
@@ -57,19 +67,58 @@ function onPointerDown(event) {
   const input = inputOf(field);
   if (!input || !input.value.trim()) return;
 
-  drag = { from: field, target: null, x: event.clientX, y: event.clientY };
+  cancelPending();
+  grip.setPointerCapture(event.pointerId);
+  event.preventDefault();
+
+  grip.classList.add('grip-pressing');
+  pending = {
+    grip, field, input,
+    startX: event.clientX, startY: event.clientY,
+    x: event.clientX, y: event.clientY,
+    timer: setTimeout(beginDrag, LONG_PRESS_MS),
+  };
+}
+
+/** The hold survived LONG_PRESS_MS without drifting past PRESS_TOLERANCE —
+ *  only now does anything actually start moving. */
+function beginDrag() {
+  if (!pending) return;
+  const { grip, field, input, x, y } = pending;
+  grip.classList.remove('grip-pressing');
+  pending = null;
+
+  drag = { from: field, target: null, x, y };
   drag.chip = document.createElement('div');
   drag.chip.className = 'drag-chip';
   drag.chip.textContent = input.value.trim();
   document.body.append(drag.chip);
   document.body.classList.add('dragging-field');
 
-  grip.setPointerCapture(event.pointerId);
+  if (navigator.vibrate) { try { navigator.vibrate(12); } catch { /* not available here */ } }
+
   moveChip();
-  event.preventDefault();
+  aimAt(drag.x, drag.y);
+}
+
+function cancelPending() {
+  if (!pending) return;
+  clearTimeout(pending.timer);
+  pending.grip.classList.remove('grip-pressing');
+  pending = null;
 }
 
 function onPointerMove(event) {
+  if (pending) {
+    pending.x = event.clientX;
+    pending.y = event.clientY;
+    if (Math.hypot(event.clientX - pending.startX, event.clientY - pending.startY) > PRESS_TOLERANCE) {
+      cancelPending();
+    }
+    event.preventDefault();
+    return;
+  }
+
   if (!drag) return;
   drag.x = event.clientX;
   drag.y = event.clientY;
@@ -80,6 +129,7 @@ function onPointerMove(event) {
 }
 
 function onPointerUp() {
+  cancelPending();
   if (!drag) return;
   const { from, target, chip } = drag;
 

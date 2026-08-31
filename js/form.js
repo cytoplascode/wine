@@ -14,13 +14,14 @@ export function buildForm() {
     form.append(renderField(field));
   }
 
+  // Visible, not folded behind a summary — a second "Tasting note" heading
+  // above the field's own label read as a mistake, and it is filled in often
+  // enough that hiding it a tap away was the wrong trade.
+  form.append(renderTastingNote());
+
   for (const group of GROUPS) {
     const fields = EDITABLE_FIELDS.filter((f) => f.group === group.id);
-    if (group.id === 'note') {
-      form.append(renderGroup(group.title, [renderTastingNote()]));
-    } else if (fields.length) {
-      form.append(renderGroup(group.title, fields.map(renderField)));
-    }
+    if (fields.length) form.append(renderGroup(group.title, fields.map(renderField)));
   }
 }
 
@@ -48,7 +49,7 @@ function renderField(field) {
   label.htmlFor = id;
   label.append(document.createTextNode(fieldLabel(field)));
 
-  if (field.ocr) {
+  if (field.auto) {
     const chip = document.createElement('span');
     chip.className = 'chip';
     chip.textContent = 'AUTO';

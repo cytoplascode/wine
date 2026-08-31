@@ -75,6 +75,12 @@ body[data-screen="saved"]   .screen[data-name="saved"] {
   padding-bottom: 8px;
 }
 
+/* Review has no footer bar — Save floats instead — so its scroll area needs
+   its own clearance at the bottom, or the last field ends up under the FAB. */
+body[data-screen="review"] .scroll {
+  padding-bottom: calc(80px + env(safe-area-inset-bottom));
+}
+
 .actions {
   display: flex;
   flex-direction: column;
@@ -234,6 +240,30 @@ body[data-screen="saved"]   .screen[data-name="saved"] {
 .btn-big { min-height: 58px; font-size: 17px; }
 .btn-quiet { background: transparent; }
 
+/* Floats over the scrolled content instead of holding a footer bar down, so
+   review keeps the space that bar used to take. */
+.btn-fab {
+  position: fixed;
+  right: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 10;
+  min-height: 52px;
+  padding: 0 22px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  box-shadow: 0 8px 22px #000000a8;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.btn-fab:active { background: var(--accent-press); }
+.btn-fab[disabled] { opacity: .5; }
+
 .btn-icon {
   width: 44px;
   height: 44px;
@@ -301,7 +331,6 @@ body[data-screen="saved"]   .screen[data-name="saved"] {
 
 .muted { margin: 0; color: var(--muted); font-size: 14px; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; word-break: break-all; }
-.err { color: var(--err); font-size: 14px; margin: 0; }
 
 /* ── Progress bar ────────────────────────────────────────────────── */
 
@@ -409,15 +438,26 @@ body[data-screen="saved"]   .screen[data-name="saved"] {
   cursor: zoom-in;
 }
 
+/* Floats over the photo instead of a bar of its own, so the thumbnail keeps
+   the space that bar used to take. The gradient keeps the label readable over
+   whatever the photo underneath happens to be; the caption itself passes taps
+   through to that photo, so only the pencil — which needs its own — opts back
+   in. */
 .thumb figcaption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 4px 4px 10px;
+  padding: 16px 4px 6px 10px;
+  background: linear-gradient(to top, #000000cc, transparent);
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: .06em;
-  color: var(--muted);
+  color: #fff;
+  pointer-events: none;
 }
 
 .icon-edit {
@@ -425,9 +465,10 @@ body[data-screen="saved"]   .screen[data-name="saved"] {
   height: 36px;
   border: 0;
   background: none;
-  color: var(--muted);
+  color: #fff;
   font-size: 15px;
   cursor: pointer;
+  pointer-events: auto;
 }
 
 .thumb-btn {
@@ -463,9 +504,6 @@ body[data-screen="saved"]   .screen[data-name="saved"] {
 }
 
 /* ── Form ────────────────────────────────────────────────────────── */
-
-/* After `.muted`, whose `margin: 0` would otherwise win on equal specificity. */
-.form-hint { margin-bottom: 16px; }
 
 .field {
   position: relative;

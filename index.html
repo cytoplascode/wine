@@ -120,7 +120,7 @@
         <img id="thumb-food" alt="Food photo" title="Tap to enlarge" hidden>
         <button class="thumb-btn" id="btn-add-food">＋<span>Food photo</span></button>
         <button class="thumb-remove" id="btn-remove-food" hidden aria-label="Remove food photo">×</button>
-        <figcaption>Food</figcaption>
+        <figcaption id="food-caption" hidden>Food</figcaption>
       </figure>
     </div>
 
@@ -129,7 +129,6 @@
       <p class="muted" id="ocr-progress-label">Reading label…</p>
     </div>
 
-    <p class="muted hint form-hint">Wrong box? Drag <b>⠿</b> onto the right field.</p>
     <form id="wine-form" autocomplete="off"></form>
 
     <details class="group">
@@ -138,10 +137,7 @@
     </details>
   </div>
 
-  <footer class="actions">
-    <button class="btn btn-primary btn-big" id="btn-save">Save to vault</button>
-    <p class="err" id="save-error" hidden></p>
-  </footer>
+  <button class="btn-fab" id="btn-save">Save to vault</button>
 </section>
 
 <!-- ─── Saved ───────────────────────────────────────────────────────── -->

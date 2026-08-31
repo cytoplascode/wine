@@ -553,9 +553,9 @@ body[data-screen="review"] .scroll {
   letter-spacing: .06em;
 }
 
-/* A field offering suggestions draws its own arrow only while it has focus, so
-   it reads as plain text until tapped. This is a permanent one; it takes no
-   pointer events, so tapping it falls through to the input and opens the list. */
+/* A field with a pick list gets a permanent arrow marking it as one, since
+   nothing else about a plain text input says so. It takes no pointer events,
+   so a tap still falls through to the input underneath and opens the list. */
 .field-list input { padding-right: 42px; }
 
 .field-list::after {
@@ -570,6 +570,42 @@ body[data-screen="review"] .scroll {
   font-size: 15px;
   pointer-events: none;
 }
+
+/* The pick list itself — themed like the rest of the app, unlike the native
+   datalist popup it replaces. Opens on every tap regardless of what the field
+   already holds, so choosing a different value never means clearing it first. */
+.suggest {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  z-index: 5;
+  margin-top: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 10px 24px #00000080;
+}
+
+.suggest-option {
+  display: block;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 0 14px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.suggest-option:last-child { border-bottom: 0; }
+.suggest-option:active { background: var(--surface-2); }
 
 /* ── Dragging a value between fields ─────────────────────────────── */
 

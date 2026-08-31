@@ -76,7 +76,7 @@ function renderField(field) {
       : 'text';
     if (field.step) input.step = field.step;
     if (field.inputMode) input.inputMode = field.inputMode;
-    if (field.suggestions) attachSuggestions(input, id, field.suggestions, wrapper);
+    if (field.suggestions) attachPicker(input, field.suggestions, wrapper);
   }
 
   input.id = id;
@@ -95,18 +95,46 @@ function renderField(field) {
   return wrapper;
 }
 
-function attachSuggestions(input, id, values, wrapper) {
-  const list = document.createElement('datalist');
-  list.id = `${id}-options`;
+/**
+ * A short pick list under the field, standing in for `<input list>` +
+ * `<datalist>`. That native pairing looked wrong on Android Chrome in three
+ * ways at once — the popup renders in the browser's own colours, not the
+ * app's; a browser-drawn indicator stacks with the arrow already added for
+ * this field, so it shows two; and once a value is picked, choosing a
+ * different one means clearing the text first, since the popup only offers
+ * completions of whatever is already typed. A plain custom list sidesteps
+ * all three: it is themed like the rest of the app, draws nothing of its
+ * own, and reopens on every tap regardless of the field's current value —
+ * typing something outside the list is still just typing.
+ */
+function attachPicker(input, values, wrapper) {
+  const list = document.createElement('div');
+  list.className = 'suggest';
+  list.hidden = true;
+
   for (const value of values) {
-    const option = document.createElement('option');
-    option.value = value;
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'suggest-option';
+    option.textContent = value;
+    // pointerdown, not click: preventDefault here stops the input from
+    // blurring, so picking a value never has to fight the keyboard closing
+    // or the list disappearing out from under the tap.
+    option.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      input.value = value;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      list.hidden = true;
+    });
     list.append(option);
   }
-  input.setAttribute('list', list.id);
+
+  const open = () => { list.hidden = false; };
+  input.addEventListener('focus', open);
+  input.addEventListener('click', open);
+  input.addEventListener('blur', () => { list.hidden = true; });
+
   wrapper.append(list);
-  // A datalist input draws its own arrow only while it has focus, so the field
-  // reads as plain text until you tap it. This marks it for a permanent one.
   wrapper.classList.add('field-list');
 }
 

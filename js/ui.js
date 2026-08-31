@@ -1,5 +1,7 @@
 /* Shared UI plumbing: DOM helpers, the screen router, app state, toasts. */
 
+import { Nav } from './nav.js';
+
 export const $ = (sel) => document.querySelector(sel);
 
 export const state = {
@@ -25,18 +27,64 @@ export function resetCapture() {
 
 /* ── Screen routing ─────────────────────────────────────────────────── */
 
+/* Every screen is a history entry, so the phone's back button walks the flow
+ * backwards instead of closing the app from wherever you happen to be. The
+ * stack lives in `nav.js`; this half owns the DOM and the History API. */
+
 const enterHooks = new Map();
 const leaveHooks = new Map();
+const nav = new Nav();
+let overlayClose = null;
 
 export function onEnter(screen, fn) { enterHooks.set(screen, fn); }
 export function onLeave(screen, fn) { leaveHooks.set(screen, fn); }
 
-export function go(screen, arg) {
+function render(screen, arg) {
   const current = document.body.dataset.screen;
   if (current && leaveHooks.has(current)) leaveHooks.get(current)();
   document.body.dataset.screen = screen;
   if (enterHooks.has(screen)) enterHooks.get(screen)(arg);
 }
+
+export function go(screen, arg) {
+  const plan = nav.go(screen, arg);
+  // A jump is performed by the browser; its history event does the drawing.
+  if (plan.action === 'jump') { history.go(plan.delta); return; }
+  if (plan.action === 'push') history.pushState({ depth: plan.depth }, '');
+  else if (plan.action === 'replace') history.replaceState({ depth: plan.depth }, '');
+  render(screen, arg);
+}
+
+window.addEventListener('popstate', (event) => {
+  // An overlay is not a screen, but back should still close it first.
+  if (overlayClose) { const close = overlayClose; overlayClose = null; close(); }
+
+  const depth = event.state && typeof event.state.depth === 'number' ? event.state.depth : 0;
+  const target = nav.pop(depth);
+  if (target) render(target.screen, target.arg);
+});
+
+/**
+ * Open something the back button should close — a zoomed photo, say, which
+ * covers the screen but is not one. It borrows a history entry so that closing
+ * it and pressing back are the same action.
+ */
+export function openOverlay(close) {
+  overlayClose = close;
+  history.pushState({ depth: nav.depth, overlay: true }, '');
+}
+
+export function dismissOverlay() {
+  if (overlayClose) history.back();
+}
+
+/* A reload restores whichever entry was current, but the photo that entry stood
+ * for went with the page, so the app always restarts at home. Unwind the
+ * entries left behind, or the first few back presses would appear to do
+ * nothing. The navigation is queued, so it lands after startup has replaced the
+ * current entry with home's. */
+const restored = history.state && history.state.depth;
+if (restored > 0) history.go(-restored);
 
 /* ── Toast ──────────────────────────────────────────────────────────── */
 

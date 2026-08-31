@@ -67,9 +67,12 @@ function ocrAssets(langs) {
 }
 
 self.addEventListener('install', (event) => {
+  // Bypass the HTTP cache here too — precaching a stale response the instant a
+  // new worker installs would defeat the point of installing it.
+  const fresh = SHELL_ASSETS.map((url) => new Request(url, { cache: 'no-store' }));
   event.waitUntil(
     caches.open(SHELL_CACHE)
-      .then((cache) => cache.addAll(SHELL_ASSETS))
+      .then((cache) => cache.addAll(fresh))
       .then(() => self.skipWaiting()),
   );
 });
@@ -115,10 +118,18 @@ async function cacheFirst(request) {
  * means a deploy takes effect the moment the phone is next online, while the
  * cache — refreshed on every successful fetch — is exactly what answers the
  * same request offline.
+ *
+ * `no-store` on the fetch itself, or this is answered by the browser's own
+ * HTTP cache — a layer underneath the service worker that still obeys
+ * whatever Cache-Control the host sent, silently undoing "network-first" for
+ * as long as that header says the file is fresh. Different files expire at
+ * different times, so half an update can land: the markup for a new button
+ * refreshed while the stylesheet and the script that wires it up were still
+ * being served from that cache, which is exactly as broken as it sounds.
  */
 async function networkFirst(request) {
   try {
-    const response = await fetch(request);
+    const response = await fetch(request, { cache: 'no-store' });
     if (response.ok) {
       const cache = await caches.open(SHELL_CACHE);
       cache.put(request, response.clone());

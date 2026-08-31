@@ -7,9 +7,15 @@
  * end up with a worker that never activates on a flaky mobile connection.
  */
 
-const VERSION = 'v2';
-const SHELL_CACHE = `shell-${VERSION}`;
-const OCR_CACHE = `ocr-${VERSION}`;
+const SHELL_CACHE = 'shell-v3';
+
+/* The OCR cache is deliberately *not* versioned with the shell. Those files are
+ * vendored and immutable — a new build of Tesseract would arrive under a new
+ * name — so tying them to the shell version would throw several megabytes off
+ * the user's phone every time a stylesheet changed. `ocr-v2` is the name earlier
+ * versions wrote to, kept alive so nobody has to download the packs twice. */
+const OCR_CACHE = 'ocr';
+const LEGACY_OCR_CACHES = ['ocr-v1', 'ocr-v2'];
 
 const SHELL_ASSETS = [
   './',
@@ -65,7 +71,7 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
-    const keep = new Set([SHELL_CACHE, OCR_CACHE]);
+    const keep = new Set([SHELL_CACHE, OCR_CACHE, ...LEGACY_OCR_CACHES]);
     const names = await caches.keys();
     await Promise.all(names.filter((n) => !keep.has(n)).map((n) => caches.delete(n)));
     await self.clients.claim();
@@ -112,6 +118,10 @@ function isVendorAsset(url) {
   return url.includes('/vendor/');
 }
 
+/** Look in every cache, not just the current one, so a pack downloaded under an
+ *  older cache name still counts as downloaded. */
+const alreadyCached = (asset) => caches.match(asset);
+
 async function cacheOcrAssets(client, langs) {
   const assets = ocrAssets(langs);
   const cache = await caches.open(OCR_CACHE);
@@ -124,7 +134,7 @@ async function cacheOcrAssets(client, langs) {
   post({});
   for (const asset of assets) {
     try {
-      if (!(await cache.match(asset))) await cache.add(asset);
+      if (!(await alreadyCached(asset))) await cache.add(asset);
     } catch (err) {
       post({ error: `${asset}: ${err.message}` });
       return;
@@ -137,8 +147,7 @@ async function cacheOcrAssets(client, langs) {
 
 async function reportOcrStatus(client, langs) {
   const assets = ocrAssets(langs);
-  const cache = await caches.open(OCR_CACHE);
-  const present = await Promise.all(assets.map((a) => cache.match(a)));
+  const present = await Promise.all(assets.map(alreadyCached));
   const done = present.filter(Boolean).length;
   if (client) {
     client.postMessage({

@@ -14,10 +14,13 @@
  *   literal — written verbatim, never quoted, never edited (fileClass)
  *   quoted  — "escaped string" when set, a bare `Key:` when empty
  *   bare    — written unquoted when set (numbers, dates), bare `Key:` when empty
+ *
+ * `auto` marks a field the app may fill in without being asked — from OCR, or
+ * from the photo itself — so the review form can show it's a guess and clear
+ * that marker the moment the user edits it by hand.
  */
 
 export const GROUPS = [
-  { id: 'note', title: 'Tasting note' },
   { id: 'purchase', title: 'Purchase' },
   { id: 'rating', title: 'Rating' },
   { id: 'cellar', title: 'Cellar' },
@@ -31,15 +34,15 @@ export const WINE_FIELDS = [
   { key: 'fileClass', emit: 'literal', value: 'Wine' },
   { key: 'Name', emit: 'quoted', computed: true },
 
-  { key: 'Winemaker', emit: 'quoted', group: 'main', type: 'text', ocr: true },
-  { key: 'WineName', emit: 'quoted', group: 'main', type: 'text', ocr: true, label: 'Wine name' },
-  { key: 'Vintage', emit: 'quoted', group: 'main', type: 'text', ocr: true, inputMode: 'numeric' },
-  { key: 'Type', emit: 'quoted', group: 'main', type: 'text', ocr: true, suggestions: TYPE_SUGGESTIONS },
-  { key: 'Varieties', emit: 'quoted', group: 'main', type: 'text', ocr: true },
-  { key: 'Country', emit: 'quoted', group: 'main', type: 'text', ocr: true },
-  { key: 'Region', emit: 'quoted', group: 'main', type: 'text', ocr: true },
-  { key: 'Appelation', emit: 'quoted', group: 'main', type: 'text', ocr: true },
-  { key: 'Vineyard', emit: 'quoted', group: 'main', type: 'text', ocr: true },
+  { key: 'Winemaker', emit: 'quoted', group: 'main', type: 'text', auto: true },
+  { key: 'WineName', emit: 'quoted', group: 'main', type: 'text', auto: true, label: 'Wine name' },
+  { key: 'Vintage', emit: 'quoted', group: 'main', type: 'text', auto: true, inputMode: 'numeric' },
+  { key: 'Type', emit: 'quoted', group: 'main', type: 'text', auto: true, suggestions: TYPE_SUGGESTIONS },
+  { key: 'Varieties', emit: 'quoted', group: 'main', type: 'text', auto: true },
+  { key: 'Country', emit: 'quoted', group: 'main', type: 'text', auto: true },
+  { key: 'Region', emit: 'quoted', group: 'main', type: 'text', auto: true },
+  { key: 'Appelation', emit: 'quoted', group: 'main', type: 'text', auto: true },
+  { key: 'Vineyard', emit: 'quoted', group: 'main', type: 'text', auto: true },
   { key: 'Style', emit: 'quoted', group: 'main', type: 'text' },
 
   { key: 'Price', emit: 'bare', group: 'purchase', type: 'number', step: '0.01' },
@@ -55,7 +58,10 @@ export const WINE_FIELDS = [
   { key: 'Inventory', emit: 'bare', group: 'cellar', type: 'number', default: '0' },
   { key: 'Buy', emit: 'bare', group: 'cellar', type: 'number', default: '0' },
   { key: 'Buy date', emit: 'bare', group: 'cellar', type: 'date' },
-  { key: 'Drink date', emit: 'bare', group: 'cellar', type: 'date' },
+  // Grouped under Rating in the form, since it's a record of the tasting, not
+  // of the cellar — but left in its vault position: WINE_FIELDS order is
+  // frontmatter order, and `group` is the only thing that may move.
+  { key: 'Drink date', emit: 'bare', group: 'rating', type: 'date', auto: true },
 ];
 
 /** Fields the user can actually type into, in template order. */

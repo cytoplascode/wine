@@ -173,7 +173,14 @@ export function setValues(record, autoKeys = []) {
     input.value = record[field.key] ?? field.default ?? '';
 
     const chip = $(`#wine-form [data-chip-for="${CSS.escape(field.key)}"]`);
-    if (chip) chip.hidden = !auto.has(field.key);
+    if (chip) {
+      chip.hidden = !auto.has(field.key);
+      // A guess hidden behind an unopened fold is not visibly a guess — Drink
+      // date filling in inside the collapsed Rating section is invisible
+      // otherwise, and "where did it go" is a worse outcome than an
+      // already-open section.
+      if (!chip.hidden) chip.closest('details.group')?.setAttribute('open', '');
+    }
   }
 
   const note = $(`#wine-form [data-key="${TASTING_NOTE_KEY}"]`);

@@ -41,6 +41,7 @@ function renderGroup(title, children) {
 function renderField(field) {
   const wrapper = document.createElement('div');
   wrapper.className = 'field';
+  wrapper.dataset.field = field.key;
 
   const id = `f-${field.key.replace(/\s+/g, '-')}`;
   const label = document.createElement('label');
@@ -82,8 +83,14 @@ function renderField(field) {
   input.dataset.key = field.key;
   wrapper.append(input);
 
-  // Any hand edit clears the "this was guessed" marker.
-  input.addEventListener('input', () => markManual(field.key));
+  // A dropdown that only cannot be dragged out of; the value still belongs to
+  // its own box.
+  if (input.tagName !== 'SELECT') addGrip(wrapper, fieldLabel(field));
+
+  input.addEventListener('input', () => {
+    markManual(field.key);          // any hand edit clears the "guessed" marker
+    refreshGrip(wrapper);
+  });
   return wrapper;
 }
 
@@ -97,7 +104,32 @@ function attachSuggestions(input, id, values, wrapper) {
   }
   input.setAttribute('list', list.id);
   wrapper.append(list);
+  // A datalist input draws its own arrow only while it has focus, so the field
+  // reads as plain text until you tap it. This marks it for a permanent one.
+  wrapper.classList.add('field-list');
 }
+
+/* ── Drag grips ─────────────────────────────────────────────────────── */
+
+/** The handle for dragging this field's value into another field. It appears
+ *  only when there is something to drag. */
+function addGrip(wrapper, name) {
+  const grip = document.createElement('button');
+  grip.type = 'button';
+  grip.className = 'grip';
+  grip.textContent = '⠿';
+  grip.hidden = true;
+  grip.setAttribute('aria-label', `Move ${name} to another field`);
+  wrapper.append(grip);
+}
+
+function refreshGrip(wrapper) {
+  const grip = wrapper.querySelector('.grip');
+  const input = wrapper.querySelector('input, textarea');
+  if (grip && input) grip.hidden = !input.value.trim();
+}
+
+const refreshGrips = () => $('#wine-form').querySelectorAll('.field').forEach(refreshGrip);
 
 function renderTastingNote() {
   const wrapper = document.createElement('div');
@@ -115,7 +147,10 @@ function renderTastingNote() {
   textarea.rows = 4;
   textarea.placeholder = 'How was it?';
 
+  wrapper.dataset.field = TASTING_NOTE_KEY;
   wrapper.append(label, textarea);
+  addGrip(wrapper, 'the tasting note');
+  textarea.addEventListener('input', () => refreshGrip(wrapper));
   return wrapper;
 }
 
@@ -142,6 +177,8 @@ export function setValues(record, autoKeys = []) {
 
   const note = $(`#wine-form [data-key="${TASTING_NOTE_KEY}"]`);
   if (note) note.value = record[TASTING_NOTE_KEY] || '';
+
+  refreshGrips();
 }
 
 /** Read the form back into a record, plus the tasting note. */

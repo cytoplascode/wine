@@ -87,11 +87,14 @@ to and including OCR still works, and saving falls back to downloading the files
    photo, then **Save to vault**.
 
 Tap either photo on the review screen to fill the screen with it, which is the quickest way
-to check a value against the label; tap it again, or press back, to shrink it. The pencil
-next to **Label** takes you back to the crop screen with the handles exactly where you left
-them, for when a value came out wrong and re-cropping — not retyping — is the fix. The
-phone's back button steps back through the flow throughout — review to crop, crop to the
-camera, camera to home — and only leaves the app from the home screen.
+to check a value against the label; tap it again, or press back, to shrink it. The **Label**
+and **Food** captions float over their own photos rather than taking a bar beneath them, with
+a pencil in the Label one that takes you back to the crop screen with the handles exactly
+where you left them — for when a value came out wrong and re-cropping, not retyping, is the
+fix. **Save to vault** floats over the bottom of the screen the same way, so the form itself
+keeps the space either would otherwise hold onto. The phone's back button steps back through
+the flow throughout — review to crop, crop to the camera, camera to home — and only leaves
+the app from the home screen.
 
 ### The curve slider
 
@@ -133,8 +136,11 @@ back 1.44× wider than tall at 180° and 1.19× at 140° — but it did not impr
 OCR recovered from them. Those particular photos are limited by thin decorative type and by
 how accurately the handles were placed, not by the wrap.
 
-Fields the app guessed are marked **AUTO**; editing one clears the mark. One bottle per pass —
-there is no batch import.
+Fields the app guessed are marked **AUTO**; editing one clears the mark. **Drink date** is one
+of them — pre-filled from the label photo's own date (its EXIF timestamp for a gallery import,
+today's date for a fresh camera shot), on the idea that a label is usually photographed at or
+near the moment the bottle is opened. It lives under **Rating** now, not **Cellar**: it is a
+record of the tasting, not of the stock. One bottle per pass — there is no batch import.
 
 ### Putting a value in the right field
 
@@ -175,18 +181,20 @@ permission prompt avoids the question.
 No build step and no runtime dependencies — it is plain ES modules served as files.
 
 ```sh
-npm test          # warp and unwrap, parser, note writer, vault states, languages, routing
+npm test          # warp and unwrap, parser, note writer, vault states, languages, routing, EXIF
 npm run serve     # http://localhost:8000
 ```
 
 Camera capture and the directory picker need a secure context, so `localhost` works but a
 LAN IP does not.
 
-The pure modules — `warp.js`, `parse.js`, `note.js`, `languages.js`, `nav.js` and the vault
-state machine — carry the tests. `nav.js` holds the screen stack behind the back button and
-returns a plan rather than touching the History API, which is what makes its awkward cases —
-returning to a screen already visited, a back press landing outside the stack — testable at
-all. `note.test.js` asserts a generated note against the vault template
+The pure modules — `warp.js`, `parse.js`, `note.js`, `languages.js`, `nav.js`, `exif.js` and the
+vault state machine — carry the tests. `nav.js` holds the screen stack behind the back button
+and returns a plan rather than touching the History API, which is what makes its awkward cases
+— returning to a screen already visited, a back press landing outside the stack — testable at
+all. `exif.js` parses the JPEG/TIFF byte layout directly rather than going through
+`file.arrayBuffer()`, so its tests build a real EXIF segment byte by byte instead of shipping a
+binary fixture. `note.test.js` asserts a generated note against the vault template
 byte for byte, which is what stops the frontmatter drifting; `cylinder.test.js` photographs a
 test image onto a modelled bottle using real pinhole geometry, then checks the unwrap gets it
 back — deliberately different maths from the one the unwrap uses, so it measures the

@@ -1,7 +1,7 @@
 /* Wiring and startup: buttons, screen hooks, service worker lifecycle. */
 
 import {
-  $, state, go, onEnter, onLeave, toast, resetCapture, bitmapToBlob,
+  $, state, go, goBack, onEnter, onLeave, toast, resetCapture, bitmapToBlob,
   openOverlay, dismissOverlay,
 } from './ui.js';
 import { initCapture, startCapture, stopCapture } from './camera.js';
@@ -374,10 +374,10 @@ renderLanguageChips();
 $('#btn-new-bottle').addEventListener('click', newBottle);
 $('#btn-another').addEventListener('click', newBottle);
 $('#btn-home').addEventListener('click', () => go('home'));
-$('#btn-capture-back').addEventListener('click', () => go('home'));
-$('#btn-crop-back').addEventListener('click', () => go('capture', 'label'));
+$('#btn-capture-back').addEventListener('click', goBack);
+$('#btn-crop-back').addEventListener('click', goBack);
 $('#btn-crop-done').addEventListener('click', flattenAndReview);
-$('#btn-review-back').addEventListener('click', () => go('crop'));
+$('#btn-review-back').addEventListener('click', goBack);
 ocrCacheBtn.addEventListener('click', () => {
   ocrCacheBtn.hidden = true;
   toast('Downloading the recognition engine…');
@@ -390,7 +390,11 @@ $('#btn-remove-food').addEventListener('click', removeFoodPhoto);
 $('#btn-save').addEventListener('click', saveBottle);
 $('#thumb-label').addEventListener('click', (event) => enlarge(event.currentTarget));
 $('#thumb-food').addEventListener('click', (event) => enlarge(event.currentTarget));
-$('#btn-edit-label').addEventListener('click', () => go('crop'));
+// A distinct arg, not a bare `go('crop')` — this crop screen was reached from
+// review, not from capture, so it needs its own place in the stack rather
+// than jumping back to the original crop entry (which would leave review
+// unreachable by back and land two steps too far on a phone/camera).
+$('#btn-edit-label').addEventListener('click', () => go('crop', 'edit'));
 $('#lightbox').addEventListener('click', dismissOverlay);
 
 registerServiceWorker();

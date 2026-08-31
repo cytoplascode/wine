@@ -80,6 +80,17 @@ export function dismissOverlay() {
   if (overlayClose) history.back();
 }
 
+/**
+ * A back arrow that always means "wherever I actually came from," not a
+ * screen name hardcoded to the usual route. A screen can be reached more
+ * than one way — the crop screen from capture, but also from review's pencil
+ * — and `go(screen)` would just jump to that screen's *original* place in
+ * the stack rather than back to whichever place led here this time.
+ */
+export function goBack() {
+  history.back();
+}
+
 /* A reload restores whichever entry was current, but the photo that entry stood
  * for went with the page, so the app always restarts at home. Unwind the
  * entries left behind, or the first few back presses would appear to do

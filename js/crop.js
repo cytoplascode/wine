@@ -26,9 +26,10 @@ const ALL_HANDLES = [TL, TM, TR, BR, BM, BL];
 const PREVIEW_WIDTH = 260;
 
 /** The magnifying loupe shown while a handle is dragged: its on-screen size —
- *  small enough to sit in the preview band, clear of any finger — and how
- *  much closer than the current view it zooms in. */
-const LOUPE_SIZE = 108;
+ *  small enough to sit under the Flattened tag, clear of any finger — and how
+ *  much closer than the current view it zooms in. Kept in step with the size
+ *  set in app.css. */
+const LOUPE_SIZE = 96;
 const LOUPE_ZOOM = 3;
 
 let bitmap = null;

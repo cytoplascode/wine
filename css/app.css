@@ -162,10 +162,20 @@ body[data-screen="saved"]   .screen[data-name="saved"] {
   display: block;
 }
 
-.preview-tag {
+/* Tag and loupe stacked in the band's top-left corner, the loupe directly
+   under the label so it reads as "what Flattened is showing you", rather
+   than pinned to a raw pixel offset that a differently sized band could clip. */
+.preview-corner {
   position: absolute;
   top: 5px;
   left: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+}
+
+.preview-tag {
   font-size: 10px;
   letter-spacing: .08em;
   text-transform: uppercase;
@@ -338,14 +348,12 @@ body[data-screen="saved"]   .screen[data-name="saved"] {
 
 /* A magnified, circular look at the handle being dragged, so its exact
    position against the label's edge is visible past the width of a
-   fingertip. Fixed in the preview band next to the flattened image, rather
-   than floating over the photo, so a finger can never end up covering it. */
+   fingertip. Sits under the Flattened tag rather than floating over the
+   photo, so a finger can never end up covering it. */
 .loupe {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 108px;
-  height: 108px;
+  width: 96px;
+  height: 96px;
+  flex: 0 0 auto;
   border-radius: 50%;
   overflow: hidden;
   border: 3px solid #fff;

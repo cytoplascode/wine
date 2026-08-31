@@ -137,6 +137,19 @@ export function warpQuad(source, quad, width, height) {
 
 /* ── Cylindrical unwrap ─────────────────────────────────────────────── */
 
+/** Widest and narrowest wrap the app will apply, and where it starts.
+ *
+ *  A wine label typically covers 120–150° of the bottle. Assuming a full 180°
+ *  — which this did at first — stretches every label by π/2 instead of the
+ *  ~1.25 it deserves, and smears the left and right thirds worst of all.
+ */
+export const MIN_WRAP = Math.PI / 3;      //  60°, barely curved
+export const MAX_WRAP = Math.PI;          // 180°, all the way round the front
+export const DEFAULT_WRAP = (140 * Math.PI) / 180;
+
+/** How much longer the unrolled arc is than the chord you can see. */
+export const arcOverChord = (wrap) => wrap / (2 * Math.sin(wrap / 2));
+
 /**
  * Flatten a label that is wrapped round a bottle.
  *
@@ -155,29 +168,37 @@ export function warpQuad(source, quad, width, height) {
  *
  * An ellipse through those three points is `centre + axis·cos φ + bulge·sin φ`,
  * where `axis` is the half-chord and `bulge` runs from the chord's midpoint to
- * the middle handle. Sweeping φ from π to 0 walks the surface in equal *angular*
- * steps, which are equal steps of arc length on the label itself — so writing
- * them into evenly spaced output columns is exactly the unrolling.
+ * the middle handle. Walking it in equal *angular* steps is equal steps of arc
+ * length on the label itself — so writing those into evenly spaced output
+ * columns is exactly the unrolling.
  *
- * The model assumes the label spans the full visible half-circumference, which
- * is close enough for a label that wraps most of the front of a bottle.
+ * `wrap` is how much of the bottle the label covers, in radians. It cannot be
+ * recovered from the handles: writing `d = D/R` for the camera distance in radii
+ * and `c = cos(wrap/2)`, the centre-to-edge height ratio is `(d−c)/(d−1)` and the
+ * edges' bulge relative to the label height is `(1−c)/(d−1)` — the same equation
+ * twice, so a near bottle wrapping a little projects exactly like a far one
+ * wrapping a lot. The caller supplies it; the app puts it on a slider.
  */
-export function warpCylinder(source, points, width, height) {
+export function warpCylinder(source, points, width, height, wrap = DEFAULT_WRAP) {
   const [a, b, c, d, e, f] = points;
 
   const top = ellipseThrough(a, b, c);
   const bottom = ellipseThrough(f, e, d);
+  const halfWrap = wrap / 2;
+  const edge = Math.sin(halfWrap);
 
   return resample(source, width, height, (dx, dy, point) => {
-    // φ runs π → 0 left to right, so u = 0 lands on A and u = 1 on C.
-    const phi = (1 - dx / width) * Math.PI;
-    const cos = Math.cos(phi);
-    const sin = Math.sin(phi);
+    // Equal steps of arc length along the label are equal steps of angle on the
+    // bottle. Their position across the chord is sin α, normalised so that the
+    // ends land exactly on the corner handles.
+    const alpha = (dx / width - 0.5) * wrap;
+    const along = Math.sin(alpha) / edge;
+    const off = Math.sqrt(Math.max(0, 1 - along * along));
 
-    const topX = top.cx + top.ax * cos + top.bx * sin;
-    const topY = top.cy + top.ay * cos + top.by * sin;
-    const bottomX = bottom.cx + bottom.ax * cos + bottom.bx * sin;
-    const bottomY = bottom.cy + bottom.ay * cos + bottom.by * sin;
+    const topX = top.cx + top.ax * along + top.bx * off;
+    const topY = top.cy + top.ay * along + top.by * off;
+    const bottomX = bottom.cx + bottom.ax * along + bottom.bx * off;
+    const bottomY = bottom.cy + bottom.ay * along + bottom.by * off;
 
     const v = dy / height;
     point.x = topX + (bottomX - topX) * v;
@@ -220,13 +241,15 @@ function ellipseThrough(left, middle, right) {
 
 /**
  * Output size for a wrapped label. The width is the *arc* length, not the chord:
- * unrolling half a cylinder of chord `2r` gives `πr`, so the chord grows by π/2.
+ * a label wrapping `wrap` radians of a bottle has chord `2R·sin(wrap/2)` and arc
+ * `R·wrap`, so the chord grows by `wrap / (2·sin(wrap/2))` — π/2 only in the
+ * limiting case of a label that goes all the way round the visible half.
  */
-export function cylinderSize(points, maxSide = MAX_SIDE) {
+export function cylinderSize(points, maxSide = MAX_SIDE, wrap = DEFAULT_WRAP) {
   const [a, b, c, d, e, f] = points;
 
   const chord = (distance(a, c) + distance(f, d)) / 2;
-  let width = chord * (Math.PI / 2);
+  let width = chord * arcOverChord(wrap);
   let height = Math.max(distance(a, f), distance(c, d));
 
   const longest = Math.max(width, height);

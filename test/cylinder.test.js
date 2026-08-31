@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { warpCylinder, cylinderSize, warpQuad, outputSize } from '../js/warp.js';
+import {
+  warpCylinder, cylinderSize, warpQuad, outputSize, arcOverChord, DEFAULT_WRAP,
+} from '../js/warp.js';
 
 /**
  * Photograph a flat image wrapped round a cylinder using the actual physics: a
@@ -111,31 +113,46 @@ function correlate(a, b, gw = 20, gh = 28) {
   return sum / ga.length;
 }
 
-const score = (span) => {
+/** Unwrap at `wrap`, and report both how well it recovers the original and the
+ *  proportions it produced. */
+const unwrapAt = (span, wrap) => {
   const flat = blocks(240, 320);
   const { photo, points } = photographCylinder(flat, { span });
-
-  const cylSize = cylinderSize(points, 1600);
-  const unwrapped = warpCylinder(photo, points, cylSize.width, cylSize.height);
-
-  const quad = [points[0], points[2], points[3], points[5]];
-  const flatSize = outputSize(quad, 1600);
-  const flattened = warpQuad(photo, quad, flatSize.width, flatSize.height);
-
-  return { cylinder: correlate(unwrapped, flat), flat: correlate(flattened, flat) };
+  const size = cylinderSize(points, 1600, wrap);
+  const out = warpCylinder(photo, points, size.width, size.height, wrap);
+  return { score: correlate(out, flat), aspect: size.width / size.height };
 };
+
+const flatWarpScore = (span) => {
+  const flat = blocks(240, 320);
+  const { photo, points } = photographCylinder(flat, { span });
+  const quad = [points[0], points[2], points[3], points[5]];
+  const size = outputSize(quad, 1600);
+  return correlate(warpQuad(photo, quad, size.width, size.height), flat);
+};
+
+/* The label in the fixture is painted onto a patch 37·span mm wide and 118 mm
+ * tall, so its true proportions follow directly from the wrap. */
+const trueAspect = (span) => (37 * span) / 118;
 
 /* ── Size ───────────────────────────────────────────────────────────── */
 
-test('the unrolled width is the arc length, not the chord', () => {
+test('the arc-to-chord ratio follows the wrap, and is π/2 only at 180°', () => {
+  assert.ok(Math.abs(arcOverChord(Math.PI) - Math.PI / 2) < 1e-12);
+  assert.ok(Math.abs(arcOverChord((120 * Math.PI) / 180) - 1.209) < 0.001);
+  assert.ok(Math.abs(arcOverChord((140 * Math.PI) / 180) - 1.300) < 0.001);
+  // A label that barely curves is barely stretched.
+  assert.ok(arcOverChord(0.2) < 1.01);
+});
+
+test('the unrolled width is the arc length for the wrap given', () => {
   const points = [
     { x: 0, y: 0 }, { x: 50, y: -10 }, { x: 100, y: 0 },
     { x: 100, y: 60 }, { x: 50, y: 70 }, { x: 0, y: 60 },
   ];
-  const size = cylinderSize(points, 4000);
-  // Unrolling half a cylinder of chord 100 gives 100·π/2 ≈ 157.
-  assert.equal(size.width, 157);
-  assert.equal(size.height, 60);
+  assert.equal(cylinderSize(points, 4000, Math.PI).width, 157);   // chord 100 × π/2
+  assert.equal(cylinderSize(points, 4000, (140 * Math.PI) / 180).width, 130);
+  assert.equal(cylinderSize(points, 4000, Math.PI).height, 60);
 });
 
 test('cylinderSize honours the cap while keeping proportions', () => {
@@ -143,9 +160,37 @@ test('cylinderSize honours the cap while keeping proportions', () => {
     { x: 0, y: 0 }, { x: 1000, y: 0 }, { x: 2000, y: 0 },
     { x: 2000, y: 1000 }, { x: 1000, y: 1000 }, { x: 0, y: 1000 },
   ];
-  const size = cylinderSize(points, 1600);
+  const size = cylinderSize(points, 1600, Math.PI);
   assert.equal(size.width, 1600);
   assert.ok(Math.abs(size.height / size.width - 1000 / (2000 * (Math.PI / 2))) < 0.01);
+});
+
+/* ── The bug this parameter exists to fix ───────────────────────────── */
+
+test('unwrapping at the true wrap recovers the label’s real proportions', () => {
+  // This is the defect a user reported: a roughly square label came back 1.58×
+  // wider than tall, because the unwrap assumed every label goes all the way
+  // round the visible half of the bottle.
+  for (const span of [1.8, 2.4, 2.9]) {
+    const { aspect } = unwrapAt(span, span);
+    const expected = trueAspect(span);
+    assert.ok(
+      Math.abs(aspect / expected - 1) < 0.06,
+      `wrap ${(span * 180 / Math.PI).toFixed(0)}°: got aspect ${aspect.toFixed(2)}, expected ${expected.toFixed(2)}`,
+    );
+  }
+});
+
+test('assuming 180° stretches every label that wraps less than that', () => {
+  for (const span of [1.8, 2.4]) {
+    const wide = unwrapAt(span, Math.PI).aspect;
+    const right = unwrapAt(span, span).aspect;
+    const overstretch = wide / right;
+    assert.ok(
+      overstretch > 1.15,
+      `wrap ${(span * 180 / Math.PI).toFixed(0)}°: 180° should visibly over-widen, got ×${overstretch.toFixed(2)}`,
+    );
+  }
 });
 
 /* ── Geometry ───────────────────────────────────────────────────────── */
@@ -206,22 +251,34 @@ test('the middle handles steer the middle of the output', () => {
 /* ── Recovery against a physically projected cylinder ───────────────── */
 
 test('a typical wrap is recovered far better than a flat warp manages', () => {
-  // ~137°, which is roughly a 95 mm label on a standard bottle.
-  const { cylinder, flat } = score(2.4);
-  assert.ok(cylinder > 0.9, `unwrap should recover the label, got ${cylinder.toFixed(3)}`);
-  assert.ok(cylinder > flat + 0.2, `unwrap ${cylinder.toFixed(3)} vs flat warp ${flat.toFixed(3)}`);
+  // ~137°, roughly a 95 mm label on a standard bottle.
+  const { score } = unwrapAt(2.4, 2.4);
+  const flat = flatWarpScore(2.4);
+  assert.ok(score > 0.9, `unwrap should recover the label, got ${score.toFixed(3)}`);
+  assert.ok(score > flat + 0.2, `unwrap ${score.toFixed(3)} vs flat warp ${flat.toFixed(3)}`);
 });
 
 test('a wide wrap is where the flat warp falls apart', () => {
-  const { cylinder, flat } = score(2.9);
-  assert.ok(cylinder > 0.9, `unwrap ${cylinder.toFixed(3)}`);
-  assert.ok(flat < 0.6, `flat warp should be visibly poor here, got ${flat.toFixed(3)}`);
+  assert.ok(flatWarpScore(2.9) < 0.6, 'a flat warp cannot cope with a wide wrap');
 });
 
-test('on a narrow wrap the flat warp is the better model', () => {
-  // The unwrap assumes the label spans the full visible half of the bottle. A
-  // small label on a fat bottle breaks that assumption and gets over-corrected,
-  // which is exactly why the crop screen offers Flat as well as Curved.
-  const { cylinder, flat } = score(1.8);
-  assert.ok(flat > cylinder, `flat ${flat.toFixed(3)} should beat unwrap ${cylinder.toFixed(3)} here`);
+test('a narrow wrap needs the right angle, not a different model', () => {
+  // This test used to read "on a narrow wrap the flat warp is the better
+  // model", which held only because the unwrap was hard-coded to 180° and so
+  // over-corrected. Told the real angle it wins comfortably: the earlier
+  // finding was measuring the bug, not the geometry.
+  const right = unwrapAt(1.8, 1.8).score;
+  const assuming180 = unwrapAt(1.8, Math.PI).score;
+  const flat = flatWarpScore(1.8);
+
+  assert.ok(right > 0.95, `unwrap at the true angle should be excellent, got ${right.toFixed(3)}`);
+  assert.ok(right > flat, `${right.toFixed(3)} should beat the flat warp's ${flat.toFixed(3)}`);
+  assert.ok(right > assuming180 + 0.1, `and clearly beat assuming 180° (${assuming180.toFixed(3)})`);
+});
+
+test('the default wrap suits an ordinary label better than 180° did', () => {
+  const withDefault = unwrapAt(2.4, DEFAULT_WRAP).score;
+  const assuming180 = unwrapAt(2.4, Math.PI).score;
+  assert.ok(withDefault > assuming180,
+    `default ${withDefault.toFixed(3)} vs 180° ${assuming180.toFixed(3)}`);
 });

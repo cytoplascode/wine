@@ -86,6 +86,11 @@ to and including OCR still works, and saving falls back to downloading the files
 6. Correct anything OCR got wrong, fill in price or rating if you like, optionally add a food
    photo, then **Save to vault**.
 
+Tap either photo on the review screen to fill the screen with it, which is the quickest way
+to check a value against the label; tap it again, or press back, to shrink it. The phone's
+back button steps back through the flow throughout — review to crop, crop to the camera,
+camera to home — and only leaves the app from the home screen.
+
 ### The curve slider
 
 A label is wrapped round a bottle, so correcting perspective is not enough — the surface
@@ -98,9 +103,9 @@ near bottle wrapping a little and a distant one wrapping a lot project to the sa
 the centre-to-edge height ratio and the bulge of the top and bottom edges turn out to be the
 same equation written twice, so there is one equation and two unknowns. The **Curve** slider
 sets it instead, from 60° to 180°, starting at 140°, which is about typical for a front
-label. A flattened preview floats over the photo and re-renders on every move — of a handle or
-of the slider — flipping to the other end of the frame to stay clear of the handle you are
-holding, so you can judge the setting against the label in front of you rather than guess it.
+label. A band above the photo shows the flattened result and re-renders on every move — of a
+handle or of the slider — so you can judge the setting against the label in front of you
+rather than guess it.
 
 Getting it wrong stretches the result. Measured against modelled bottle photographs,
 comparing the flattened output to the original flat label:
@@ -126,6 +131,19 @@ how accurately the handles were placed, not by the wrap.
 Fields the app guessed are marked **AUTO**; editing one clears the mark. One bottle per pass —
 there is no batch import.
 
+### Putting a value in the right field
+
+The commonest failure is not a misread but a misfiling: the appellation is read perfectly and
+lands in Region, or the cuvée ends up as the winemaker. Retyping both fields to fix that is
+the most tedious thing the review screen asks for, so every filled field carries a **⠿**
+grip. Drag it onto another field and the two values swap.
+
+A swap rather than a move, because it is symmetrical: nothing that was already in the target
+is destroyed, and dragging back undoes it. Dragging over a collapsed group opens it, and the
+form scrolls when you hold near its top or bottom edge, so the two fields need not be on
+screen together. A field that cannot hold the value — a date, or a number given text — is
+never offered as a target, since it would silently blank itself.
+
 ### Languages
 
 The home screen has chips for English, French, Italian, Spanish, Portuguese, German and
@@ -140,7 +158,8 @@ recognition gave it, which distinguishes the three things that go wrong: text th
 found at all (nothing in the list), text found but misread (low confidence), and text read
 correctly but filed under the wrong field (high confidence, wrong box). The first two are
 usually fixed by re-cropping — check the handles are on the label's real edges, and watch the
-flattened preview while you move the Curve slider until the lines of text read straight.
+flattened preview while you move the Curve slider until the lines of text read straight. The
+third is fixed by dragging the value into the right field.
 
 Android may ask you to re-confirm folder access after a restart; the home screen shows a
 **Reconnect vault** button when that happens. Choosing "Allow on every visit" in Chrome's
@@ -151,15 +170,18 @@ permission prompt avoids the question.
 No build step and no runtime dependencies — it is plain ES modules served as files.
 
 ```sh
-npm test          # warp and unwrap, parser, note writer, vault states, languages
+npm test          # warp and unwrap, parser, note writer, vault states, languages, routing
 npm run serve     # http://localhost:8000
 ```
 
 Camera capture and the directory picker need a secure context, so `localhost` works but a
 LAN IP does not.
 
-The pure modules — `warp.js`, `parse.js`, `note.js`, `languages.js` and the vault state
-machine — carry the tests. `note.test.js` asserts a generated note against the vault template
+The pure modules — `warp.js`, `parse.js`, `note.js`, `languages.js`, `nav.js` and the vault
+state machine — carry the tests. `nav.js` holds the screen stack behind the back button and
+returns a plan rather than touching the History API, which is what makes its awkward cases —
+returning to a screen already visited, a back press landing outside the stack — testable at
+all. `note.test.js` asserts a generated note against the vault template
 byte for byte, which is what stops the frontmatter drifting; `cylinder.test.js` photographs a
 test image onto a modelled bottle using real pinhole geometry, then checks the unwrap gets it
 back — deliberately different maths from the one the unwrap uses, so it measures the

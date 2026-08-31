@@ -58,10 +58,13 @@ export const WINE_FIELDS = [
   { key: 'Inventory', emit: 'bare', group: 'cellar', type: 'number', default: '0' },
   { key: 'Buy', emit: 'bare', group: 'cellar', type: 'number', default: '0' },
   { key: 'Buy date', emit: 'bare', group: 'cellar', type: 'date' },
-  // Grouped under Rating in the form, since it's a record of the tasting, not
-  // of the cellar — but left in its vault position: WINE_FIELDS order is
-  // frontmatter order, and `group` is the only thing that may move.
-  { key: 'Drink date', emit: 'bare', group: 'rating', type: 'date', auto: true },
+  // `group: 'main'` here means the same thing it does above: rendered up top,
+  // never folded — not that this is an OCR field (`auto` already says that on
+  // its own). It carries a guess the moment review opens, so it does not get
+  // to hide behind a tap the way Cellar or Rating do. Left in its vault
+  // position regardless: WINE_FIELDS order is frontmatter order, and `group`
+  // is the only thing that may move.
+  { key: 'Drink date', emit: 'bare', group: 'main', type: 'date', auto: true },
 ];
 
 /** Fields the user can actually type into, in template order. */

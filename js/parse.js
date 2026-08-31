@@ -51,6 +51,16 @@ const FUZZY_NOISE = [
   'denominazione di origine', 'denominacion de origen',
 ];
 
+/**
+ * A word one edit away from a short varietal name, but a real producer or
+ * place name rather than a garbled grape — "Joseph Mellot" is not a misread
+ * "Merlot". Fuzzy matching exists for OCR corruption on long, distinctive
+ * names ("Gewürztraminer" mangled six ways is still unambiguously that word);
+ * on a short common one, an edit distance of 1 reaches other real words too
+ * easily to tell corruption from coincidence. Exact matches are unaffected.
+ */
+const VARIETAL_LOOKALIKES = new Set(['mellot']);
+
 export function isNoise(text) {
   if (NOISE_PATTERNS.some((re) => re.test(text))) return true;
 
@@ -271,7 +281,7 @@ function findVarieties(fullText) {
 
   for (const [name] of SORTED_VARIETALS) {
     const needle = normalize(name);
-    const at = findPhrase(words, needle);
+    const at = findPhrase(words, needle, undefined, VARIETAL_LOOKALIKES);
     if (at < 0) continue;
     // Skip a grape already covered by a longer one: "Cabernet Sauvignon"
     // must not also yield "Sauvignon Blanc"'s "Sauvignon".
@@ -293,9 +303,16 @@ function colourOfVarieties(varieties) {
   return colours.size === 1 ? [...colours][0] : '';
 }
 
-/** Exact phrase match, then a distance-tolerant pass for longer names, because
- *  OCR mangles the likes of "Gewürztraminer" more often than not. */
-function findPhrase(words, needle, explicitTolerance) {
+/**
+ * Exact phrase match, then a distance-tolerant pass for longer names, because
+ * OCR mangles the likes of "Gewürztraminer" more often than not.
+ *
+ * `fuzzyExclude` withholds specific words from that tolerant pass — a real
+ * word close enough in spelling to collide with a short target, where fuzzy
+ * matching would rather guess wrong than leave the field blank. It never
+ * blocks an exact match.
+ */
+function findPhrase(words, needle, explicitTolerance, fuzzyExclude) {
   const parts = needle.split(' ');
   const tolerance = explicitTolerance ?? (
     needle.length <= 5 ? 0 : needle.length <= 9 ? 1 : 2
@@ -305,6 +322,7 @@ function findPhrase(words, needle, explicitTolerance) {
     const window = words.slice(i, i + parts.length).join(' ');
     if (window === needle) return i;
     if (!tolerance) continue;
+    if (fuzzyExclude && fuzzyExclude.has(window)) continue;
     if (Math.abs(window.length - needle.length) > tolerance) continue;
     if (levenshtein(window, needle) <= tolerance) return i;
   }

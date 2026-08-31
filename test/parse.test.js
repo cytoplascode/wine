@@ -182,6 +182,20 @@ test('a short grape name is matched exactly, not fuzzily', () => {
   assert.equal(parse([['GRAND VIN', 20]]).Varieties, undefined);
 });
 
+test('a producer whose name resembles a grape is not read as one', () => {
+  // "Joseph Mellot" misread as "Toseph Mellot" — real Tesseract output on this
+  // label — sits one edit from "Merlot", which used to win the winemaker's own
+  // line out from under him and invent a variety and colour to go with it.
+  const { fields } = parseLabel({
+    lines: [
+      { text: 'TOSEPH MELLOT', height: 238, top: 288, left: 261, right: 1329, confidence: 37 },
+      { text: 'LA GAUPIERE', height: 92, top: 870, left: 491, right: 1136, confidence: 83 },
+    ],
+  }, NOW);
+  assert.equal(fields.Varieties, undefined);
+  assert.equal(fields.Type, undefined);
+});
+
 /* ── Appellation, country, region ───────────────────────────────────── */
 
 test('a known appellation fills country and region too', () => {

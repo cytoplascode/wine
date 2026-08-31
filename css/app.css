@@ -338,18 +338,18 @@ body[data-screen="saved"]   .screen[data-name="saved"] {
 
 /* A magnified, circular look at the handle being dragged, so its exact
    position against the label's edge is visible past the width of a
-   fingertip. Follows the touch point but never sits under it. */
+   fingertip. Fixed in the preview band next to the flattened image, rather
+   than floating over the photo, so a finger can never end up covering it. */
 .loupe {
   position: absolute;
-  left: 0;
-  top: 0;
-  width: 132px;
-  height: 132px;
+  top: 6px;
+  right: 6px;
+  width: 108px;
+  height: 108px;
   border-radius: 50%;
   overflow: hidden;
   border: 3px solid #fff;
   box-shadow: 0 6px 18px #000000a0;
-  transform: translate(-50%, -50%);
   pointer-events: none;
   background: #000;
 }

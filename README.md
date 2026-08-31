@@ -99,8 +99,9 @@ A label is wrapped round a bottle, so correcting perspective is not enough — t
 itself is curved, which compresses text towards the edges and bows every line. So the crop
 screen has six handles: the four corners go on the label's corners, and the two middle
 handles on the bows of its top and bottom edges. The label is then unrolled off the cylinder.
-Dragging any handle opens a magnified loupe over it — a fingertip covers more label than a
-corner needs, so the loupe is where the actual placement gets judged.
+Dragging any handle opens a magnified loupe beside the flattened preview — a fingertip covers
+more label than a corner needs, so the loupe is where the actual placement gets judged, in a
+fixed spot a thumb can never end up covering.
 
 The one thing those handles cannot tell you is how far round the bottle the label goes. A
 near bottle wrapping a little and a distant one wrapping a lot project to the same outline —

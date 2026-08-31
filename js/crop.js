@@ -25,11 +25,10 @@ const ALL_HANDLES = [TL, TM, TR, BR, BM, BL];
  *  pointer move without the drag ever feeling heavy. */
 const PREVIEW_WIDTH = 260;
 
-/** The magnifying loupe shown while a handle is dragged: its on-screen size,
- *  the gap it keeps from the touch point, and how much closer than the
- *  current view it zooms in. */
-const LOUPE_SIZE = 132;
-const LOUPE_OFFSET = 28;
+/** The magnifying loupe shown while a handle is dragged: its on-screen size —
+ *  small enough to sit in the preview band, clear of any finger — and how
+ *  much closer than the current view it zooms in. */
+const LOUPE_SIZE = 108;
 const LOUPE_ZOOM = 3;
 
 let bitmap = null;
@@ -234,7 +233,8 @@ function onPointerDown(event) {
   if (bestDistance > limit) return;
   dragging = best;
   rememberChords();
-  showLoupe(event.clientX, event.clientY);
+  $('#crop-loupe').hidden = false;
+  drawLoupe();
   event.target.setPointerCapture(event.pointerId);
   event.preventDefault();
 }
@@ -267,32 +267,19 @@ function onPointerMove(event) {
 
   draw();
   drawPreview();
-  showLoupe(event.clientX, event.clientY);
+  drawLoupe();
   event.preventDefault();
 }
 
 /**
- * A magnified, circular look at the handle being dragged. Centred on the
- * handle's own (post-constraint) position rather than the raw touch point, so
- * the crosshair marks exactly where it will land; positioned near the finger
- * but offset clear of it, flipping to the other side when there is no room.
+ * A magnified look at the handle being dragged, redrawn into a fixed spot in
+ * the preview band — beside the flattened image, not floating over the photo
+ * — so a fingertip can never end up covering the one thing meant to show what
+ * is underneath it. Centred on the handle's own (post-constraint) position
+ * rather than the raw touch point, so the crosshair marks exactly where it
+ * will land.
  */
-function showLoupe(clientX, clientY) {
-  const wrapEl = $('#crop-loupe');
-  wrapEl.hidden = false;
-
-  const stage = $('#crop-stage');
-  const rect = stage.getBoundingClientRect();
-  const localX = clientX - rect.left;
-  const localY = clientY - rect.top;
-  const radius = LOUPE_SIZE / 2;
-
-  const above = localY - (LOUPE_SIZE + LOUPE_OFFSET) >= 0;
-  const centerY = above ? localY - LOUPE_OFFSET - radius : localY + LOUPE_OFFSET + radius;
-
-  wrapEl.style.left = `${clamp(localX, radius, rect.width - radius)}px`;
-  wrapEl.style.top = `${clamp(centerY, radius, rect.height - radius)}px`;
-
+function drawLoupe() {
   const canvas = $('#crop-loupe-canvas');
   const dpr = view.dpr || 1;
   const backing = Math.round(LOUPE_SIZE * dpr);

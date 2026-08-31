@@ -20,7 +20,7 @@ import {
 
 /* ── Photo handling ─────────────────────────────────────────────────── */
 
-async function handlePhoto(bitmap, mode) {
+async function handlePhoto(bitmap, mode, capturedOn) {
   if (mode === 'food') {
     state.foodBlob = await bitmapToBlob(bitmap);
     bitmap.close();
@@ -29,6 +29,7 @@ async function handlePhoto(bitmap, mode) {
   }
   if (state.labelBitmap) state.labelBitmap.close();
   state.labelBitmap = bitmap;
+  state.labelDate = capturedOn || null;
   state.cropPoints = null;
   go('crop');
 }
@@ -90,10 +91,22 @@ function showOcrProgress(fraction, label) {
   $('#ocr-progress-label').textContent = label;
 }
 
+/**
+ * Merge in the label photo's capture date as a guess at when it was drunk —
+ * often the same moment — marked AUTO like any other guess, so it stays
+ * visibly a guess until edited. Independent of OCR, and applied both before
+ * and after it runs, so the date survives whether or not recognition itself
+ * succeeds.
+ */
+function withCaptureDate(record) {
+  return state.labelDate ? { ...record, 'Drink date': state.labelDate } : record;
+}
+const captureDateAuto = () => (state.labelDate ? ['Drink date'] : []);
+
 async function runOcr() {
   if (!state.flattened || state.ocrText) return;
 
-  setValues(emptyRecord());
+  setValues(withCaptureDate(emptyRecord()), captureDateAuto());
   $('#raw-text').textContent = '';
   showOcrProgress(0, 'Starting the recognition engine…');
   try {
@@ -110,7 +123,7 @@ async function runOcr() {
 
     const { fields, auto } = parseLabel(result);
     state.fields = fields;
-    setValues({ ...emptyRecord(), ...fields }, auto);
+    setValues(withCaptureDate({ ...emptyRecord(), ...fields }), [...auto, ...captureDateAuto()]);
   } catch (err) {
     $('#raw-text').textContent = '';
     toast(`Could not read the label: ${err.message}`);
@@ -132,6 +145,7 @@ function renderFoodThumb() {
   const image = $('#thumb-food');
   const addButton = $('#btn-add-food');
   const removeButton = $('#btn-remove-food');
+  const caption = $('#food-caption');
 
   if (foodUrl) { URL.revokeObjectURL(foodUrl); foodUrl = null; }
 
@@ -141,11 +155,15 @@ function renderFoodThumb() {
     image.hidden = false;
     addButton.hidden = true;
     removeButton.hidden = false;
+    caption.hidden = false;
   } else {
     image.removeAttribute('src');
     image.hidden = true;
     addButton.hidden = false;
     removeButton.hidden = true;
+    // The + button already says "Food photo" — a caption under it too would
+    // repeat itself before there is even a photo to caption.
+    caption.hidden = true;
   }
 }
 
@@ -175,8 +193,6 @@ function enlarge(thumbnail) {
 
 async function saveBottle() {
   const button = $('#btn-save');
-  const error = $('#save-error');
-  error.hidden = true;
 
   if (!state.flattened) {
     toast('There is no label image to save yet.');
@@ -197,12 +213,9 @@ async function saveBottle() {
     $('#saved-path').textContent = result.path;
     go('saved');
   } catch (err) {
-    if (err instanceof PermissionNeeded) {
-      error.textContent = 'The vault needs reconnecting — do that on the home screen, then save again.';
-    } else {
-      error.textContent = `Could not save: ${err.message}`;
-    }
-    error.hidden = false;
+    toast(err instanceof PermissionNeeded
+      ? 'The vault needs reconnecting — do that on the home screen, then save again.'
+      : `Could not save: ${err.message}`);
   } finally {
     button.disabled = false;
     button.textContent = 'Save to vault';

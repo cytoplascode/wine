@@ -2,10 +2,13 @@
  *
  * A label is very often photographed before the app is even open, so importing
  * an existing picture is a first-class path, not just a fallback. Both routes
- * end at the same place: one ImageBitmap handed to onPhoto().
+ * end at the same place: an ImageBitmap and a capture date handed to onPhoto()
+ * — today for a fresh camera shot, or the photo's own EXIF date for an older
+ * one pulled from the gallery, so "Drink date" can start from a real guess.
  */
 
 import { $, toast } from './ui.js';
+import { readCaptureDate, localIsoDate } from './exif.js';
 
 const TITLES = {
   label: 'Photograph the label',
@@ -81,7 +84,7 @@ async function takePhoto() {
   canvas.getContext('2d').drawImage(video, 0, 0);
 
   const bitmap = await createImageBitmap(canvas);
-  onPhoto(bitmap, mode);
+  onPhoto(bitmap, mode, localIsoDate());
 }
 
 async function importFromGallery(event) {
@@ -92,8 +95,11 @@ async function importFromGallery(event) {
   try {
     // 'from-image' applies the EXIF orientation tag, which phone cameras rely
     // on: without it a portrait photo arrives on its side.
-    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
-    onPhoto(bitmap, mode);
+    const [bitmap, capturedOn] = await Promise.all([
+      createImageBitmap(file, { imageOrientation: 'from-image' }),
+      readCaptureDate(file),
+    ]);
+    onPhoto(bitmap, mode, capturedOn || localIsoDate());
   } catch (err) {
     toast(`That image could not be opened: ${err.message}`);
   }

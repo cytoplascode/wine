@@ -31,6 +31,7 @@ const SHELL_ASSETS = [
   './js/camera.js',
   './js/crop.js',
   './js/drag.js',
+  './js/exif.js',
   './js/warp.js',
   './js/ocr.js',
   './js/schema.js',

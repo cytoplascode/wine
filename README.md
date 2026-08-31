@@ -139,17 +139,19 @@ how accurately the handles were placed, not by the wrap.
 Fields the app guessed are marked **AUTO**; editing one clears the mark. **Drink date** is one
 of them — pre-filled from the label photo's own date (its EXIF timestamp for a gallery import,
 today's date for a fresh camera shot), on the idea that a label is usually photographed at or
-near the moment the bottle is opened. It lives under **Rating**, not **Cellar**: it is a record
-of the tasting, not of the stock — and that section opens itself on a fresh scan, since a
-guess folded away where nothing shows it was made looks exactly like a missing field. One
-bottle per pass — there is no batch import.
+near the moment the bottle is opened. It sits with the main fields rather than behind Purchase,
+Rating or Cellar: those stay collapsed unless whatever landed in them needs a look, but a fresh
+guess is worth seeing every time. One bottle per pass — there is no batch import.
 
 ### Putting a value in the right field
 
 The commonest failure is not a misread but a misfiling: the appellation is read perfectly and
 lands in Region, or the cuvée ends up as the winemaker. Retyping both fields to fix that is
 the most tedious thing the review screen asks for, so every filled field carries a **⠿**
-grip. Drag it onto another field and the two values swap.
+grip. Hold it down — the same long press Android already uses for its own gestures, and the
+grip fills in to match — then drag onto another field to swap the two values. A plain tap does
+nothing, on purpose: the grip sits close enough to the AUTO chip and the field below it that an
+instant drag turned an ordinary tap into an accidental swap.
 
 A swap rather than a move, because it is symmetrical: nothing that was already in the target
 is destroyed, and dragging back undoes it. Dragging over a collapsed group opens it, and the

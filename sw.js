@@ -1,13 +1,16 @@
 /* Service worker.
  *
  * Two caches on purpose. The shell is small and precached during `install`, so a
- * first visit becomes offline-capable immediately. The OCR assets are several
- * megabytes and are fetched only when the page asks for them, with progress
- * reported back: an addAll() that large inside `install` is the classic way to
- * end up with a worker that never activates on a flaky mobile connection.
+ * first visit becomes offline-capable immediately, then served network-first —
+ * a deploy takes effect the moment the phone is next online, and the cache
+ * only steps in when there is no connection. The OCR assets are several
+ * megabytes, fetched only when the page asks for them (an addAll() that large
+ * inside `install` is the classic way to end up with a worker that never
+ * activates on a flaky mobile connection), and served cache-first forever
+ * once downloaded, since a vendored build never changes under its own name.
  */
 
-const SHELL_CACHE = 'shell-v4';
+const SHELL_CACHE = 'shell-v5';
 
 /* The OCR cache is deliberately *not* versioned with the shell. Those files are
  * vendored and immutable — a new build of Tesseract would arrive under a new
@@ -85,27 +88,53 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
   if (new URL(request.url).origin !== self.location.origin) return;
 
-  event.respondWith((async () => {
+  event.respondWith(isVendorAsset(request.url) ? cacheFirst(request) : networkFirst(request));
+});
+
+/**
+ * The vendored OCR files: several megabytes, immutable — a new build of
+ * Tesseract arrives under a new filename — so once cached, never worth
+ * fetching again.
+ */
+async function cacheFirst(request) {
+  const hit = await caches.match(request, { ignoreSearch: true });
+  if (hit) return hit;
+  const response = await fetch(request);
+  if (response.ok) {
+    const cache = await caches.open(OCR_CACHE);
+    cache.put(request, response.clone());
+  }
+  return response;
+}
+
+/**
+ * Everything else — the app's own code. This used to be cache-first too,
+ * repopulated only when `install` ran again, which meant a fix could ship and
+ * sit unseen on every phone that already had a shell cached, forever, unless
+ * this file's own bytes happened to change in the same deploy. Network-first
+ * means a deploy takes effect the moment the phone is next online, while the
+ * cache — refreshed on every successful fetch — is exactly what answers the
+ * same request offline.
+ */
+async function networkFirst(request) {
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      const cache = await caches.open(SHELL_CACHE);
+      cache.put(request, response.clone());
+    }
+    return response;
+  } catch (err) {
     const hit = await caches.match(request, { ignoreSearch: true });
     if (hit) return hit;
-
-    try {
-      const response = await fetch(request);
-      if (response.ok && isVendorAsset(request.url)) {
-        const cache = await caches.open(OCR_CACHE);
-        cache.put(request, response.clone());
-      }
-      return response;
-    } catch (err) {
-      // Offline and uncached: a navigation can still be answered by the shell.
-      if (request.mode === 'navigate') {
-        const shell = await caches.match('./index.html');
-        if (shell) return shell;
-      }
-      throw err;
+    // Offline and never cached: a navigation can still be answered by the shell.
+    if (request.mode === 'navigate') {
+      const shell = await caches.match('./index.html');
+      if (shell) return shell;
     }
-  })());
-});
+    throw err;
+  }
+}
 
 self.addEventListener('message', (event) => {
   const data = event.data || {};

@@ -87,9 +87,11 @@ to and including OCR still works, and saving falls back to downloading the files
    photo, then **Save to vault**.
 
 Tap either photo on the review screen to fill the screen with it, which is the quickest way
-to check a value against the label; tap it again, or press back, to shrink it. The phone's
-back button steps back through the flow throughout — review to crop, crop to the camera,
-camera to home — and only leaves the app from the home screen.
+to check a value against the label; tap it again, or press back, to shrink it. The pencil
+next to **Label** takes you back to the crop screen with the handles exactly where you left
+them, for when a value came out wrong and re-cropping — not retyping — is the fix. The
+phone's back button steps back through the flow throughout — review to crop, crop to the
+camera, camera to home — and only leaves the app from the home screen.
 
 ### The curve slider
 
@@ -97,6 +99,8 @@ A label is wrapped round a bottle, so correcting perspective is not enough — t
 itself is curved, which compresses text towards the edges and bows every line. So the crop
 screen has six handles: the four corners go on the label's corners, and the two middle
 handles on the bows of its top and bottom edges. The label is then unrolled off the cylinder.
+Dragging any handle opens a magnified loupe over it — a fingertip covers more label than a
+corner needs, so the loupe is where the actual placement gets judged.
 
 The one thing those handles cannot tell you is how far round the bottle the label goes. A
 near bottle wrapping a little and a distant one wrapping a lot project to the same outline —

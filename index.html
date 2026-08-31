@@ -81,6 +81,9 @@
 
   <div class="stage stage-dark" id="crop-stage">
     <canvas id="crop-canvas"></canvas>
+    <div class="loupe" id="crop-loupe" hidden>
+      <canvas id="crop-loupe-canvas"></canvas>
+    </div>
   </div>
 
   <footer class="actions">
@@ -106,7 +109,10 @@
     <div class="thumbs">
       <figure class="thumb">
         <img id="thumb-label" alt="Flattened label" title="Tap to enlarge">
-        <figcaption>Label</figcaption>
+        <figcaption>
+          Label
+          <button type="button" class="icon-edit" id="btn-edit-label" aria-label="Re-crop the label">✎</button>
+        </figcaption>
       </figure>
       <figure class="thumb thumb-add" id="food-slot">
         <img id="thumb-food" alt="Food photo" title="Tap to enlarge" hidden>

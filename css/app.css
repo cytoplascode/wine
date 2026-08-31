@@ -336,6 +336,30 @@ body[data-screen="saved"]   .screen[data-name="saved"] {
 
 #crop-canvas { touch-action: none; }
 
+/* A magnified, circular look at the handle being dragged, so its exact
+   position against the label's edge is visible past the width of a
+   fingertip. Follows the touch point but never sits under it. */
+.loupe {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 132px;
+  height: 132px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 3px solid #fff;
+  box-shadow: 0 6px 18px #000000a0;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  background: #000;
+}
+
+.loupe canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
 .overlay-note {
   position: absolute;
   left: var(--pad);
@@ -378,11 +402,24 @@ body[data-screen="saved"]   .screen[data-name="saved"] {
 }
 
 .thumb figcaption {
-  padding: 7px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 4px 4px 10px;
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: .06em;
   color: var(--muted);
+}
+
+.icon-edit {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 15px;
+  cursor: pointer;
 }
 
 .thumb-btn {

@@ -377,6 +377,7 @@ $('#btn-remove-food').addEventListener('click', removeFoodPhoto);
 $('#btn-save').addEventListener('click', saveBottle);
 $('#thumb-label').addEventListener('click', (event) => enlarge(event.currentTarget));
 $('#thumb-food').addEventListener('click', (event) => enlarge(event.currentTarget));
+$('#btn-edit-label').addEventListener('click', () => go('crop'));
 $('#lightbox').addEventListener('click', dismissOverlay);
 
 registerServiceWorker();

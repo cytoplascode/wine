@@ -25,6 +25,13 @@ const ALL_HANDLES = [TL, TM, TR, BR, BM, BL];
  *  pointer move without the drag ever feeling heavy. */
 const PREVIEW_WIDTH = 260;
 
+/** The magnifying loupe shown while a handle is dragged: its on-screen size,
+ *  the gap it keeps from the touch point, and how much closer than the
+ *  current view it zooms in. */
+const LOUPE_SIZE = 132;
+const LOUPE_OFFSET = 28;
+const LOUPE_ZOOM = 3;
+
 let bitmap = null;
 let points = null;          // 6 points in source-image pixels
 let wrap = DEFAULT_WRAP;    // how far round the bottle the label goes
@@ -227,6 +234,7 @@ function onPointerDown(event) {
   if (bestDistance > limit) return;
   dragging = best;
   rememberChords();
+  showLoupe(event.clientX, event.clientY);
   event.target.setPointerCapture(event.pointerId);
   event.preventDefault();
 }
@@ -259,7 +267,54 @@ function onPointerMove(event) {
 
   draw();
   drawPreview();
+  showLoupe(event.clientX, event.clientY);
   event.preventDefault();
+}
+
+/**
+ * A magnified, circular look at the handle being dragged. Centred on the
+ * handle's own (post-constraint) position rather than the raw touch point, so
+ * the crosshair marks exactly where it will land; positioned near the finger
+ * but offset clear of it, flipping to the other side when there is no room.
+ */
+function showLoupe(clientX, clientY) {
+  const wrapEl = $('#crop-loupe');
+  wrapEl.hidden = false;
+
+  const stage = $('#crop-stage');
+  const rect = stage.getBoundingClientRect();
+  const localX = clientX - rect.left;
+  const localY = clientY - rect.top;
+  const radius = LOUPE_SIZE / 2;
+
+  const above = localY - (LOUPE_SIZE + LOUPE_OFFSET) >= 0;
+  const centerY = above ? localY - LOUPE_OFFSET - radius : localY + LOUPE_OFFSET + radius;
+
+  wrapEl.style.left = `${clamp(localX, radius, rect.width - radius)}px`;
+  wrapEl.style.top = `${clamp(centerY, radius, rect.height - radius)}px`;
+
+  const canvas = $('#crop-loupe-canvas');
+  const dpr = view.dpr || 1;
+  const backing = Math.round(LOUPE_SIZE * dpr);
+  if (canvas.width !== backing) { canvas.width = backing; canvas.height = backing; }
+  const ctx = canvas.getContext('2d');
+
+  const p = points[dragging];
+  const srcSpan = backing / (view.scale * LOUPE_ZOOM);
+  const half = srcSpan / 2;
+
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, backing, backing);
+  ctx.drawImage(bitmap, p.x - half, p.y - half, srcSpan, srcSpan, 0, 0, backing, backing);
+
+  const mid = backing / 2;
+  const arm = 11 * dpr;
+  ctx.lineWidth = Math.max(1.5, dpr * 1.5);
+  ctx.strokeStyle = '#c8324f';
+  ctx.beginPath();
+  ctx.moveTo(mid - arm, mid); ctx.lineTo(mid + arm, mid);
+  ctx.moveTo(mid, mid - arm); ctx.lineTo(mid, mid + arm);
+  ctx.stroke();
 }
 
 /** Put a middle handle on the perpendicular through its chord's midpoint,
@@ -279,6 +334,7 @@ function bowTowards(edge, x, y) {
 function onPointerUp(event) {
   if (dragging < 0) return;
   dragging = -1;
+  $('#crop-loupe').hidden = true;
   try { event.target.releasePointerCapture(event.pointerId); } catch { /* already gone */ }
 }
 

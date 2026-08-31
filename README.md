@@ -82,30 +82,46 @@ to and including OCR still works, and saving falls back to downloading the files
    nothing needs the network again.
 3. **Connect vault** — pick your vault folder, or a subfolder of it. The choice is remembered.
 4. **New bottle** → photograph the label, or tap **Gallery** to use a picture you already took.
-5. Drag the handles onto the label, then **Read label**.
+5. Drag the handles onto the label, set **Curve** by the preview, then **Read label**.
 6. Correct anything OCR got wrong, fill in price or rating if you like, optionally add a food
    photo, then **Save to vault**.
 
-### Curved or flat
+### The curve slider
 
 A label is wrapped round a bottle, so correcting perspective is not enough — the surface
-itself is curved, which compresses text towards the edges and bows every line. **Curved**
-(the default) uses six handles: put the four corners on the label's corners and the two
-middle handles on the bows of its top and bottom edges, and the label is unrolled off the
-cylinder. **Flat** is a plain four-corner correction, for back labels, flat-sided bottles, or
-a photograph of a label that is not on a bottle.
+itself is curved, which compresses text towards the edges and bows every line. So the crop
+screen has six handles: the four corners go on the label's corners, and the two middle
+handles on the bows of its top and bottom edges. The label is then unrolled off the cylinder.
 
-Neither is right for everything. Measured against modelled bottle photographs, comparing the
-result to the original flat label:
+The one thing those handles cannot tell you is how far round the bottle the label goes. A
+near bottle wrapping a little and a distant one wrapping a lot project to the same outline —
+the centre-to-edge height ratio and the bulge of the top and bottom edges turn out to be the
+same equation written twice, so there is one equation and two unknowns. The **Curve** slider
+sets it instead, from 60° to 180°, starting at 140°, which is about typical for a front
+label. A flattened preview floats over the photo and re-renders on every move — of a handle or
+of the slider — flipping to the other end of the frame to stay clear of the handle you are
+holding, so you can judge the setting against the label in front of you rather than guess it.
 
-| Label wraps | Curved | Flat |
-|---|---|---|
-| ~103° — a small label, or a distant shot | 0.80 | **0.85** |
-| ~137° — typical | **0.94** | 0.64 |
-| ~166° — a wide label | **0.97** | 0.42 |
+Getting it wrong stretches the result. Measured against modelled bottle photographs,
+comparing the flattened output to the original flat label:
 
-Curved assumes the label spans the full visible half of the bottle, so it over-corrects a
-small label on a fat bottle. If a scan comes out worse than you expected, try the other mode.
+| Label wraps | Flat four-corner | Unwrapped at 180° | Unwrapped at the right angle |
+|---|---|---|---|
+| 100° | 0.86 | 0.74 | **0.99** |
+| 120° | 0.75 | 0.81 | **0.98** |
+| 140° | 0.63 | 0.93 | **0.95** |
+| 160° | 0.46 | **0.99** | 0.92 |
+
+Proportions follow the same pattern: at the right angle the label comes back at its true
+aspect ratio, while assuming 180° — which is what earlier versions did — makes it up to a
+third too wide. Sliding all the way down to 60° is close enough to a plain four-corner
+correction for a back label or a flat-sided bottle, so there is no separate mode for that.
+
+This fixes the geometry, not the recognition. On three real bottle photographs the correct
+wrap changed the proportions exactly as the model predicts — one roughly square label came
+back 1.44× wider than tall at 180° and 1.19× at 140° — but it did not improve how many fields
+OCR recovered from them. Those particular photos are limited by thin decorative type and by
+how accurately the handles were placed, not by the wrap.
 
 Fields the app guessed are marked **AUTO**; editing one clears the mark. One bottle per pass —
 there is no batch import.
@@ -123,8 +139,8 @@ Open **Raw recognised text** on the review screen. Every line is listed with the
 recognition gave it, which distinguishes the three things that go wrong: text that was never
 found at all (nothing in the list), text found but misread (low confidence), and text read
 correctly but filed under the wrong field (high confidence, wrong box). The first two are
-usually fixed by re-cropping — check the handles are on the label's real edges and try the
-other crop mode.
+usually fixed by re-cropping — check the handles are on the label's real edges, and watch the
+flattened preview while you move the Curve slider until the lines of text read straight.
 
 Android may ask you to re-confirm folder access after a restart; the home screen shows a
 **Reconnect vault** button when that happens. Choosing "Allow on every visit" in Chrome's

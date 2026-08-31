@@ -1,17 +1,15 @@
-/* Crop screen: draggable handles over the captured photo, and the step that
- * flattens what they enclose.
+/* Crop screen: six draggable handles over the captured photo, and the step that
+ * unwraps the label off the curve of the bottle.
  *
- * Two shapes, because neither is right for every bottle. "Curved" unwraps the
- * label off the cylinder using six handles; "Flat" is a plain four-corner
- * perspective correction. Measured against modelled bottle photographs, the
- * unwrap wins comfortably on a label that wraps most of the front, and loses on
- * a small label on a fat bottle, where it over-corrects.
+ * How far round the bottle the label goes cannot be worked out from the handles
+ * — the geometry is genuinely ambiguous, a near bottle wrapping a little
+ * projects the same as a far one wrapping a lot — so the Curve slider sets it,
+ * and a live preview shows the result while you drag.
  */
 
 import { $, canvasToBlob } from './ui.js';
 import {
-  orderQuad, outputSize, warpQuad,
-  cylinderSize, warpCylinder, edgeArc, MAX_SIDE,
+  cylinderSize, warpCylinder, edgeArc, MAX_SIDE, DEFAULT_WRAP,
 } from './warp.js';
 
 const HANDLE_RADIUS = 13;   // CSS px — drawn size
@@ -21,13 +19,18 @@ const BULGE = 0.035;        // default curve on the top and bottom edges
 
 /** Indices into `points`: A, B, C, D, E, F. */
 const TL = 0; const TM = 1; const TR = 2; const BR = 3; const BM = 4; const BL = 5;
-const CORNERS = [TL, TR, BR, BL];
+const ALL_HANDLES = [TL, TM, TR, BR, BM, BL];
+
+/** How wide the live preview is rendered. Small enough to re-warp on every
+ *  pointer move without the drag ever feeling heavy. */
+const PREVIEW_WIDTH = 260;
 
 let bitmap = null;
 let points = null;          // 6 points in source-image pixels
-let mode = 'curved';        // 'curved' | 'flat'
+let wrap = DEFAULT_WRAP;    // how far round the bottle the label goes
 let dragging = -1;
 let view = { scale: 1, dpr: 1 };
+let previewSource = null;   // small copy of the photo, for the preview warp
 
 export function initCrop() {
   const canvas = $('#crop-canvas');
@@ -36,34 +39,34 @@ export function initCrop() {
   canvas.addEventListener('pointerup', onPointerUp);
   canvas.addEventListener('pointercancel', onPointerUp);
   $('#btn-crop-reset').addEventListener('click', resetPoints);
-  $('#btn-mode-curved').addEventListener('click', () => setMode('curved'));
-  $('#btn-mode-flat').addEventListener('click', () => setMode('flat'));
-  renderMode();
+
+  const slider = $('#wrap-slider');
+  slider.value = String(Math.round((DEFAULT_WRAP * 180) / Math.PI));
+  slider.addEventListener('input', () => {
+    wrap = (Number(slider.value) * Math.PI) / 180;
+    renderWrap();
+    if (bitmap) { draw(); drawPreview(); }
+  });
+  renderWrap();
 }
 
 export function showImage(nextBitmap, saved) {
   bitmap = nextBitmap;
   if (!bitmap) return;
   points = saved || defaultPoints();
+  buildPreviewSource();
   layout();
   draw();
+  drawPreview();
 }
 
 export function getPoints() { return points; }
-export function getMode() { return mode; }
 
-function setMode(next) {
-  mode = next;
-  renderMode();
-  if (bitmap) draw();
-}
-
-function renderMode() {
-  $('#btn-mode-curved').setAttribute('aria-pressed', String(mode === 'curved'));
-  $('#btn-mode-flat').setAttribute('aria-pressed', String(mode === 'flat'));
-  $('#crop-hint').textContent = mode === 'curved'
-    ? 'Put the middle handles on the label’s curved top and bottom edges.'
-    : 'Four corners, for a flat label or a straight-on photo.';
+function renderWrap() {
+  const degrees = Math.round((wrap * 180) / Math.PI);
+  $('#wrap-label').textContent = `Curve ${degrees}°`;
+  $('#crop-hint').textContent = 'Corners on the label’s corners, middle handles on the '
+    + 'bow of its top and bottom edges. Slide Curve until the preview reads straight.';
 }
 
 function defaultPoints() {
@@ -87,10 +90,51 @@ function resetPoints() {
   if (!bitmap) return;
   points = defaultPoints();
   draw();
+  drawPreview();
 }
 
-/** Handles the current mode lets you touch. */
-const activeHandles = () => (mode === 'curved' ? [TL, TM, TR, BR, BM, BL] : CORNERS);
+/* ── Live preview ───────────────────────────────────────────────────── */
+
+/** A small copy of the photo, so the preview can be re-warped on every pointer
+ *  move without touching the full-resolution image. */
+function buildPreviewSource() {
+  const scale = Math.min(1, (PREVIEW_WIDTH * 2.5) / bitmap.width);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  previewSource = {
+    image: ctx.getImageData(0, 0, canvas.width, canvas.height),
+    scale,
+  };
+}
+
+/** Flatten at preview size, so the user can watch the label straighten as they
+ *  drag instead of finding out after recognition has already run. */
+function drawPreview() {
+  const canvas = $('#preview-canvas');
+  if (!previewSource || !points) return;
+
+  const local = points.map((p) => ({
+    x: p.x * previewSource.scale,
+    y: p.y * previewSource.scale,
+  }));
+
+  let size;
+  try {
+    size = cylinderSize(local, PREVIEW_WIDTH, wrap);
+  } catch {
+    return;                       // degenerate mid-drag; the next move fixes it
+  }
+
+  const warped = warpCylinder(previewSource.image, local, size.width, size.height, wrap);
+  canvas.width = warped.width;
+  canvas.height = warped.height;
+  canvas.getContext('2d').putImageData(
+    new ImageData(warped.data, warped.width, warped.height), 0, 0,
+  );
+}
 
 /* ── Layout and painting ────────────────────────────────────────────── */
 
@@ -111,18 +155,9 @@ function layout() {
   view = { scale: scale * dpr, dpr };
 }
 
-/** Trace the crop outline: curved arcs top and bottom, or a plain quad. */
+/** Trace the crop outline: the two edge arcs, joined down the sides. */
 function tracePath(ctx) {
   const toCanvasPoint = (p) => toCanvas(p.x, p.y);
-
-  if (mode === 'flat') {
-    const quad = CORNERS.map((i) => toCanvasPoint(points[i]));
-    ctx.moveTo(quad[0].x, quad[0].y);
-    for (let i = 1; i < quad.length; i++) ctx.lineTo(quad[i].x, quad[i].y);
-    ctx.closePath();
-    return;
-  }
-
   const top = edgeArc(points[TL], points[TM], points[TR]).map(toCanvasPoint);
   const bottom = edgeArc(points[BL], points[BM], points[BR]).map(toCanvasPoint);
 
@@ -153,7 +188,7 @@ function draw() {
   ctx.lineWidth = 3 * dpr;
   ctx.stroke();
 
-  for (const i of activeHandles()) {
+  for (const i of ALL_HANDLES) {
     const p = toCanvas(points[i].x, points[i].y);
     const middle = i === TM || i === BM;
     ctx.beginPath();
@@ -186,7 +221,7 @@ function onPointerDown(event) {
 
   let best = -1;
   let bestDistance = Infinity;
-  for (const i of activeHandles()) {
+  for (const i of ALL_HANDLES) {
     const c = toCanvas(points[i].x, points[i].y);
     const d = Math.hypot(c.x - at.x, c.y - at.y);
     if (d < bestDistance) { bestDistance = d; best = i; }
@@ -194,6 +229,7 @@ function onPointerDown(event) {
 
   if (bestDistance > limit) return;
   dragging = best;
+  dodgePreview();
   rememberChords();
   event.target.setPointerCapture(event.pointerId);
   event.preventDefault();
@@ -205,20 +241,55 @@ function onPointerMove(event) {
   const x = at.x / view.scale;
   const y = at.y / view.scale;
 
-  // Middle handles may sit outside the frame: the curve of a label often bows
-  // past the top or bottom of a tightly framed photo.
-  const slack = bitmap.height * 0.25;
-  points[dragging] = {
-    x: clamp(x, 0, bitmap.width),
-    y: clamp(y, -slack, bitmap.height + slack),
-  };
+  if (dragging === TM || dragging === BM) {
+    // The unwrap reads the middle handle as the halfway point across the label.
+    // Letting it slide sideways would quietly misalign every column, so it only
+    // moves along the perpendicular — it sets how much the edge bows, nothing
+    // else. On a tilted bottle the visual high point of the edge is *not* the
+    // halfway point, which is a trap when the handle is free to go anywhere.
+    points[dragging] = bowTowards(dragging === TM ? EDGES[0] : EDGES[1], x, y);
+  } else {
+    // Middle handles may sit outside the frame: a label's curve often bows past
+    // the top or bottom of a tightly framed photo.
+    const slack = bitmap.height * 0.25;
+    points[dragging] = {
+      x: clamp(x, 0, bitmap.width),
+      y: clamp(y, -slack, bitmap.height + slack),
+    };
+    // Dragging a corner carries its edge's middle handle along, so the bow the
+    // user set is kept instead of being left stranded off the edge.
+    carryMiddles();
+  }
 
-  // Dragging a corner carries its edge's middle handle along, so the bow the
-  // user set is kept instead of being left stranded off the edge.
-  if (dragging !== TM && dragging !== BM) carryMiddles();
-
+  dodgePreview();
   draw();
+  drawPreview();
   event.preventDefault();
+}
+
+/** The preview floats over the photo, so it has to get out of the way of the
+ *  handle being dragged rather than sit on top of it — a bottom-edge handle is
+ *  exactly where it would otherwise be. */
+function dodgePreview() {
+  if (dragging < 0) return;
+  const stage = $('#crop-stage');
+  const canvas = $('#crop-canvas');
+  const y = canvas.offsetTop + (points[dragging].y * view.scale) / view.dpr;
+  $('#crop-preview').classList.toggle('preview-top', y > stage.clientHeight * 0.55);
+}
+
+/** Put a middle handle on the perpendicular through its chord's midpoint,
+ *  as far along it as the pointer reached. */
+function bowTowards(edge, x, y) {
+  const [, left, right] = edge;
+  const mid = chordMidpoint(edge);
+  const dx = points[right].x - points[left].x;
+  const dy = points[right].y - points[left].y;
+  const length = Math.hypot(dx, dy) || 1;
+  const nx = -dy / length;
+  const ny = dx / length;
+  const reach = (x - mid.x) * nx + (y - mid.y) * ny;
+  return { x: mid.x + nx * reach, y: mid.y + ny * reach };
 }
 
 function onPointerUp(event) {
@@ -259,18 +330,8 @@ const clamp = (v, lo, hi) => (v < lo ? lo : (v > hi ? hi : v));
  * Returns `{ canvas, blob }`.
  */
 export async function flatten() {
-  const curved = mode === 'curved';
-
-  let shape;
-  let size;
-  if (curved) {
-    shape = points;
-    size = cylinderSize(points, MAX_SIDE);
-  } else {
-    shape = orderQuad(CORNERS.map((i) => points[i]));
-    CORNERS.forEach((slot, i) => { points[slot] = shape[i]; });
-    size = outputSize(shape, MAX_SIDE);
-  }
+  const shape = points;
+  const size = cylinderSize(shape, MAX_SIDE, wrap);
 
   // Read back only the bounding box, and only at the resolution the output can
   // use. Height is the honest yardstick: unrolling stretches width on purpose.
@@ -293,9 +354,7 @@ export async function flatten() {
   const source = srcCtx.getImageData(0, 0, srcCanvas.width, srcCanvas.height);
 
   const local = shape.map((p) => ({ x: (p.x - box.x) * scale, y: (p.y - box.y) * scale }));
-  const warped = curved
-    ? warpCylinder(source, local, size.width, size.height)
-    : warpQuad(source, local, size.width, size.height);
+  const warped = warpCylinder(source, local, size.width, size.height, wrap);
 
   const canvas = document.createElement('canvas');
   canvas.width = warped.width;
@@ -318,5 +377,5 @@ function boundingBox(shape) {
 }
 
 window.addEventListener('resize', () => {
-  if (bitmap && document.body.dataset.screen === 'crop') { layout(); draw(); }
+  if (bitmap && document.body.dataset.screen === 'crop') { layout(); draw(); drawPreview(); }
 });

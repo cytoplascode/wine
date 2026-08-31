@@ -72,17 +72,21 @@
   <header class="topbar">
     <button class="btn-icon" id="btn-crop-back" aria-label="Back">‹</button>
     <h1>Drag to the edges</h1>
-    <div class="segmented" role="group" aria-label="Label shape">
-      <button type="button" id="btn-mode-curved" aria-pressed="true">Curved</button>
-      <button type="button" id="btn-mode-flat" aria-pressed="false">Flat</button>
-    </div>
   </header>
 
   <div class="stage stage-dark" id="crop-stage">
     <canvas id="crop-canvas"></canvas>
+    <div class="preview" id="crop-preview">
+      <canvas id="preview-canvas"></canvas>
+      <span class="preview-tag">Flattened</span>
+    </div>
   </div>
 
   <footer class="actions">
+    <label class="slider" for="wrap-slider">
+      <span id="wrap-label">Curve</span>
+      <input type="range" id="wrap-slider" min="60" max="180" step="5" value="140">
+    </label>
     <p class="muted hint" id="crop-hint"></p>
     <div class="actions-row">
       <button class="btn btn-quiet" id="btn-crop-reset">Reset</button>

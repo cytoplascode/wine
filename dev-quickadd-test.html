@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--
+  A throwaway dev utility, not part of the app — for checking how Obsidian's
+  QuickAdd plugin actually responds to obsidian://quickadd links on a real
+  phone, at the same origin the real app runs from (so link-tap behaviour
+  matches what the app will see, unlike testing through an embedded preview).
+  Safe to delete once that question is answered.
+-->
+<title>QuickAdd URI test (dev)</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+  :root {
+    --bg: #140b0d;
+    --surface: #211316;
+    --surface-2: #2c191d;
+    --line: #43262b;
+    --text: #f4e8ea;
+    --muted: #a9868c;
+    --accent: #b82f45;
+    --accent-soft: #b82f4522;
+    --ok: #4f9d74;
+    --warn: #c98a3d;
+    --radius: 10px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.5 'Source Sans 3', system-ui, sans-serif;
+    padding: 28px 18px 60px;
+  }
+
+  .wrap { max-width: 560px; margin: 0 auto; }
+
+  header { margin-bottom: 26px; }
+
+  .eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  h1 {
+    font-family: 'Fraunces', Georgia, serif;
+    font-optical-sizing: auto;
+    font-weight: 600;
+    font-size: clamp(28px, 6vw, 34px);
+    line-height: 1.12;
+    margin: 6px 0 10px;
+    text-wrap: balance;
+  }
+
+  header p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 15px;
+    max-width: 46ch;
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 18px;
+    margin-bottom: 16px;
+  }
+
+  .panel h2 {
+    font-family: 'Fraunces', Georgia, serif;
+    font-weight: 600;
+    font-size: 17px;
+    margin: 0 0 4px;
+  }
+
+  .panel .hint {
+    margin: 0 0 16px;
+    color: var(--muted);
+    font-size: 13.5px;
+    line-height: 1.5;
+  }
+
+  .field { margin-bottom: 12px; }
+  .field:last-child { margin-bottom: 0; }
+
+  .field label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 5px;
+  }
+
+  .field .optional {
+    text-transform: none;
+    font-weight: 400;
+    letter-spacing: 0;
+    color: var(--muted);
+    opacity: .75;
+  }
+
+  .field input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface-2);
+    color: var(--text);
+    font: 14.5px/1.4 'JetBrains Mono', monospace;
+  }
+
+  .field input:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: -1px;
+  }
+
+  .field input::placeholder { color: #6b5459; }
+
+  .row { display: flex; gap: 10px; }
+  .row .field { flex: 1; }
+
+  .uri-strip {
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin: 16px 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--muted);
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  .uri-strip b { color: var(--text); font-weight: 500; }
+
+  .actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .btn {
+    display: block;
+    width: 100%;
+    padding: 13px 16px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface-2);
+    color: var(--text);
+    font: 600 15px/1 'Source Sans 3', sans-serif;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  .btn span {
+    display: block;
+    margin-top: 3px;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 400;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .btn.primary {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+  }
+
+  .btn:active { transform: translateY(1px); }
+
+  .legend {
+    display: grid;
+    gap: 10px;
+    margin-top: 4px;
+  }
+
+  .legend .row-item {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+    font-size: 13.5px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  .legend .mark {
+    flex: 0 0 auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .03em;
+    padding: 2px 6px;
+    border-radius: 999px;
+    margin-top: 2px;
+  }
+
+  .mark.ok { background: #4f9d7422; color: var(--ok); }
+  .mark.warn { background: #c98a3d22; color: var(--warn); }
+
+  footer {
+    margin-top: 22px;
+    font-size: 12.5px;
+    color: var(--muted);
+    opacity: .8;
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Label Scanner &middot; integration bench</div>
+    <h1>QuickAdd URI bench</h1>
+    <p>Served from the real site, not an embedded preview — so a tapped link behaves exactly as it would in the shipped app.</p>
+  </header>
+
+  <div class="panel">
+    <h2>Target</h2>
+    <p class="hint">Match these exactly to Obsidian — the choice name has to match character for character.</p>
+    <div class="field">
+      <label for="vault">Vault name</label>
+      <input id="vault" type="text" value="Wine Vault" autocapitalize="off" autocorrect="off" spellcheck="false">
+    </div>
+    <div class="field">
+      <label for="choice">Choice name</label>
+      <input id="choice" type="text" value="Test Capture" autocapitalize="off" autocorrect="off" spellcheck="false">
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Value <span class="optional">— what a real note's text would ride in on</span></h2>
+    <p class="hint">Leave the variable name blank if the capture format is the plain <code>{{VALUE}}</code>; fill it in if the format uses a named token like <code>{{value:contents}}</code>.</p>
+    <div class="row">
+      <div class="field">
+        <label for="varname">Variable name <span class="optional">(optional)</span></label>
+        <input id="varname" type="text" placeholder="e.g. contents" autocapitalize="off" autocorrect="off" spellcheck="false">
+      </div>
+    </div>
+    <div class="field">
+      <label for="valuetext">Value text</label>
+      <input id="valuetext" type="text" value="Hello from URI">
+    </div>
+  </div>
+
+  <div class="uri-strip" id="uri-preview"></div>
+
+  <div class="actions">
+    <a class="btn" id="btn-plain" href="#">
+      Open — choice only, no value
+      <span>tests whether the box appears at all</span>
+    </a>
+    <a class="btn primary" id="btn-value" href="#">
+      Open — choice + value
+      <span>tests whether the value skips the box</span>
+    </a>
+  </div>
+
+  <div class="panel" style="margin-top: 16px;">
+    <h2>Reading the result</h2>
+    <div class="legend">
+      <div class="row-item">
+        <span class="mark ok">skips box</span>
+        the value lands in the note with no prompt — the note text can be fully automated from the scanner.
+      </div>
+      <div class="row-item">
+        <span class="mark warn">box appears</span>
+        the value didn't reach the variable — check the variable name against the capture format, or the note text will need one manual paste too.
+      </div>
+    </div>
+  </div>
+
+  <footer>Settings are remembered on this device only, for next time.</footer>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const fields = ['vault', 'choice', 'varname', 'valuetext'];
+  const STORE_KEY = 'quickadd-bench-v1';
+
+  function load() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
+      for (const f of fields) if (saved[f] !== undefined) $(f).value = saved[f];
+    } catch {}
+  }
+
+  function save() {
+    try {
+      const data = {};
+      for (const f of fields) data[f] = $(f).value;
+      localStorage.setItem(STORE_KEY, JSON.stringify(data));
+    } catch {}
+  }
+
+  // encodeURIComponent, not URLSearchParams — URLSearchParams encodes a space
+  // as `+`, the application/x-www-form-urlencoded convention, which a plain
+  // URI-scheme parser has no reason to decode back to a space. `%20` is what
+  // actually survives the trip into Obsidian.
+  function buildUri({ withValue }) {
+    const vault = $('vault').value.trim();
+    const choice = $('choice').value.trim();
+    const varname = $('varname').value.trim();
+    const valuetext = $('valuetext').value;
+
+    const pairs = [
+      ['vault', vault],
+      ['choice', choice],
+    ];
+    if (withValue) pairs.push([varname ? `value-${varname}` : 'value', valuetext]);
+
+    const query = pairs.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+    return `obsidian://quickadd?${query}`;
+  }
+
+  function render() {
+    save();
+    const plain = buildUri({ withValue: false });
+    const withValue = buildUri({ withValue: true });
+    $('btn-plain').href = plain;
+    $('btn-value').href = withValue;
+    $('uri-preview').innerHTML =
+      `<b>no value</b>\n${plain}\n\n<b>with value</b>\n${withValue}`;
+  }
+
+  for (const f of fields) $(f).addEventListener('input', render);
+  load();
+  render();
+</script>
+</body>
+</html>

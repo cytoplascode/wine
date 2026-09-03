@@ -66,20 +66,28 @@ export async function save({ record, labelBlob, foodBlob, ocrText }) {
  * the same way (see quickadd.js), so this hands the caller a small worklist
  * instead of writing them itself: one entry per photo, each the blob to put
  * on the clipboard and the URI that opens Obsidian ready to receive it.
+ *
+ * A QuickAdd Capture always writes into a note — even the "paste an image"
+ * behaviour is really "insert an embed into this note", so both photos
+ * target the note's own path, not a `.jpg` path of their own; there is no
+ * such thing as a Capture that targets a bare attachment file. That also
+ * means this app cannot know what Obsidian will actually call the pasted
+ * attachment, so — unlike the folder and download paths — `Label::` and
+ * `Food::` are left bare rather than pointed at a guessed filename.
  */
 function saveViaQuickAdd({ record, labelBlob, foodBlob, ocrText }) {
   const config = quickadd.getConfig();
   const basename = noteBasename(record);
-  const markdown = buildNote({ record, basename, hasFood: Boolean(foodBlob), ocrText });
+  const markdown = buildNote({
+    record, basename, hasFood: Boolean(foodBlob), ocrText, skipImageLinks: true,
+  });
   const notePath = `${WINES_FOLDER}/${noteFilename(basename)}`;
 
   location.href = quickadd.noteUri(config, notePath, markdown);
 
-  const photos = [
-    { label: 'Label photo', blob: labelBlob, uri: quickadd.imageUri(config, `${WINES_FOLDER}/${labelFilename(basename)}`) },
-  ];
+  const photos = [{ label: 'Label photo', blob: labelBlob, uri: quickadd.imageUri(config, notePath) }];
   if (foodBlob) {
-    photos.push({ label: 'Food photo', blob: foodBlob, uri: quickadd.imageUri(config, `${WINES_FOLDER}/${foodFilename(basename)}`) });
+    photos.push({ label: 'Food photo', blob: foodBlob, uri: quickadd.imageUri(config, notePath) });
   }
 
   return { mode: 'quickadd', path: notePath, photos };

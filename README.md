@@ -83,21 +83,43 @@ isn't a matter of permission. If your vault sits there instead of an ordinary sh
 
 The vault card has a second mode for exactly this: **Use Obsidian's QuickAdd instead**. It
 never touches the filesystem — it hands off to Obsidian over a plain `obsidian://quickadd`
-link, and Obsidian writes with its own, already-unrestricted storage access. Set up two
-QuickAdd choices first:
+link, and Obsidian writes with its own, already-unrestricted storage access.
 
-- A **note** capture, format `{{value:content}}`, target file `{{value:filename}}` — both
-  named values arrive with the link, so it runs with nothing to tap.
-- A **photo** capture, target file `{{value:filename}}` again, but format left as the plain
-  `{{VALUE}}` — deliberately unnamed, since that is what makes QuickAdd open its paste box.
-  Nothing can read an image off the clipboard without an actual paste gesture, named value or
-  not, so a photo always needs one.
+Install the **QuickAdd** community plugin, then set up two choices exactly like this:
 
-Then fill in your vault name and the two choice names in the app. **Save to vault** writes the
-note straight into Obsidian, no prompt; the next screen offers a button per photo that copies
-it to the clipboard, then opens Obsidian with the right note already chosen — one paste each.
-There is also no way to check for an existing file over a one-way link, so unlike the folder
-backend this cannot offer Obsidian's ` 2`, ` 3` suffix on a name collision.
+1. **The note.** New Choice → **Capture**. Name it whatever you like — this exact name goes
+   into the app's "Note capture" field. Under its settings:
+   - **Capture To** → **Format** → `{{value:filename}}` (a file, not a folder, and it will be
+     a new file every time — turn on **Create file if it doesn't exist**).
+   - **Capture Format** → `{{value:content}}` — and only that; nothing else in the format box.
+   - Turn *off* anything that adds its own text — task checkbox, bullet point, a fixed
+     template header — the content is already a complete note, frontmatter included.
+
+2. **The photo.** New Choice → **Capture** again. Name it whatever you like — this name goes
+   into the app's "Photo capture" field. Under its settings:
+   - **Capture To** → **Format** → `{{value:filename}}`, same token as above. This is
+     deliberate, not a mistake: a Capture always writes into a *note*, so the photo's capture
+     targets the same note the first choice just created, not a `.jpg` path of its own —
+     there's no such thing as a Capture aimed straight at an image file. Obsidian pastes the
+     photo in as an attachment and inserts an embed wherever this capture writes to.
+   - **Capture Format** → leave it as the plain, unnamed `{{VALUE}}` — do **not** name it.
+     That's what forces QuickAdd to open its input box instead of running silently, and the
+     box is the only thing in QuickAdd that can catch a pasted image at all.
+   - Leave **Insert Mode** to append (or set an "insert after" point under `## Label` if
+     you'd like it to land closer to that heading) — either way it's a normal QuickAdd
+     append, not something this app controls.
+
+Then, in the app, fill in your vault name and those two choice names — spelled exactly as you
+named them, they're matched by exact string.
+
+**Save to vault** writes the note straight into Obsidian, no prompt. Because this app cannot
+know in advance what Obsidian will end up calling a pasted attachment, the note's `Label::`
+and `Food::` lines are left bare rather than pointed at a guessed filename — the photo lands
+as a normal embed appended in the note instead of neatly inline next to those fields. The next
+screen offers a button per photo: first tap copies it to the clipboard, second tap opens
+Obsidian with that same note already chosen, ready for you to paste. There is also no way to
+check for an existing file over a one-way link, so unlike the folder backend this cannot offer
+Obsidian's ` 2`, ` 3` suffix on a name collision.
 
 ## Using it
 

@@ -5,19 +5,22 @@
  * a plain OS-level hand-off.
  *
  * QuickAdd only skips its input prompt for a *named* value — a plain
- * unnamed `{{VALUE}}` always opens the box, by design (confirmed against
- * the plugin itself, not assumed). That is the whole reason the note and
- * the photos work differently here: the note's Capture uses named `content`
- * and `filename` values, so it runs with nothing to tap. A photo's Capture
- * also takes a named `filename` — so it lands in the right note — but its
- * *content* has to stay a plain unnamed `{{VALUE}}`, on purpose, since that
- * is what forces the paste box open: nothing reads an image off the
- * clipboard without an actual paste gesture, so a photo always needs one.
+ * unnamed `{{VALUE}}` always stops and asks, by design (confirmed against
+ * the plugin itself, not assumed). Both values here are named, so both
+ * links run without anything to tap.
  *
- * There is also no collision check here, unlike the folder and REST
- * backends — a URI is one-way, with no way to ask Obsidian "does this file
- * already exist" first. Two notes with the same composed name will collide
- * however the Capture choice itself is set to handle that.
+ * A URI cannot carry an image, and Obsidian's Android WebView cannot read
+ * one off the clipboard either — both tested rather than guessed. What it
+ * *can* read is clipboard text, so a photo crosses as a base64 data URI
+ * put there by the caller, and the choice this fires is a macro whose user
+ * script decodes it and writes the file at the path named here. That path
+ * is why the note's `Label::` and `Food::` embeds can point at real
+ * filenames: the script is told exactly what to call the file.
+ *
+ * There is no collision check here, unlike the folder backend — a URI is
+ * one-way, with no way to ask Obsidian "does this file already exist"
+ * first. Two notes with the same composed name will collide however the
+ * choice itself is set to handle that.
  */
 
 const CONFIG_KEY = 'label-scanner-quickadd-config';
@@ -54,7 +57,7 @@ export function noteUri(config, path, content) {
   return buildUri(config.vault, config.noteChoice, { filename: path, content });
 }
 
-/** Opens Obsidian with the target file already chosen; the paste itself is manual. */
+/** Runs the macro that decodes the clipboard's data URI into this exact path. */
 export function imageUri(config, path) {
   return buildUri(config.vault, config.imageChoice, { filename: path });
 }

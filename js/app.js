@@ -327,7 +327,7 @@ async function renderVaultCard() {
     renderCard(quickadd.isConfigured()
       ? {
         dot: 'ok',
-        text: `Set up for “${config.vault}”. Saving writes the note automatically; each photo needs one paste in Obsidian.`,
+        text: `Set up for “${config.vault}”. Saving writes the note automatically; each photo takes one more tap.`,
         button: ['Save connection', 'save-quickadd'],
       }
       : {

@@ -2,6 +2,8 @@
  * browser's downloads when this browser cannot write to a folder. */
 
 import * as vault from './vault.js';
+import * as quickadd from './quickadd.js';
+import { getMode } from './connection.js';
 import {
   noteBasename,
   asciiBasename,
@@ -23,9 +25,14 @@ export class PermissionNeeded extends Error {
 
 /**
  * Save one bottle.
- * Returns `{ mode: 'vault' | 'download', path }`.
+ * Returns `{ mode: 'vault' | 'download', path }` for the folder and download
+ * paths, or `{ mode: 'quickadd', path, photos }` — see saveViaQuickAdd.
  */
 export async function save({ record, labelBlob, foodBlob, ocrText }) {
+  if (getMode() === 'quickadd' && quickadd.isConfigured()) {
+    return saveViaQuickAdd({ record, labelBlob, foodBlob, ocrText });
+  }
+
   const status = await vault.status();
 
   if (status === 'unsupported' || status === 'none') {
@@ -51,6 +58,31 @@ export async function save({ record, labelBlob, foodBlob, ocrText }) {
   const vaultName = vault.getVaultName();
   const prefix = vaultName ? `${vaultName}/` : '';
   return { mode: 'vault', path: `${prefix}${WINES_FOLDER}/${noteFilename(basename)}` };
+}
+
+/**
+ * Fire the note straight into Obsidian — no prompt, since both the target
+ * path and the content ride in as named values. The photos cannot follow
+ * the same way (see quickadd.js), so this hands the caller a small worklist
+ * instead of writing them itself: one entry per photo, each the blob to put
+ * on the clipboard and the URI that opens Obsidian ready to receive it.
+ */
+function saveViaQuickAdd({ record, labelBlob, foodBlob, ocrText }) {
+  const config = quickadd.getConfig();
+  const basename = noteBasename(record);
+  const markdown = buildNote({ record, basename, hasFood: Boolean(foodBlob), ocrText });
+  const notePath = `${WINES_FOLDER}/${noteFilename(basename)}`;
+
+  location.href = quickadd.noteUri(config, notePath, markdown);
+
+  const photos = [
+    { label: 'Label photo', blob: labelBlob, uri: quickadd.imageUri(config, `${WINES_FOLDER}/${labelFilename(basename)}`) },
+  ];
+  if (foodBlob) {
+    photos.push({ label: 'Food photo', blob: foodBlob, uri: quickadd.imageUri(config, `${WINES_FOLDER}/${foodFilename(basename)}`) });
+  }
+
+  return { mode: 'quickadd', path: notePath, photos };
 }
 
 /**

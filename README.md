@@ -74,6 +74,31 @@ gets Obsidian's own ` 2`, ` 3` suffix rather than overwriting anything.
 On browsers without the File System Access API (Firefox Android, iOS Safari) everything up
 to and including OCR still works, and saving falls back to downloading the files.
 
+### If your vault lives in Obsidian's own "App Storage"
+
+Android's folder picker is the Storage Access Framework, and since Android 11 that picker
+cannot browse into another app's private storage at all — not with any permission, because it
+isn't a matter of permission. If your vault sits there instead of an ordinary shared folder,
+**Connect vault** can never reach it, whatever you grant.
+
+The vault card has a second mode for exactly this: **Use Obsidian's QuickAdd instead**. It
+never touches the filesystem — it hands off to Obsidian over a plain `obsidian://quickadd`
+link, and Obsidian writes with its own, already-unrestricted storage access. Set up two
+QuickAdd choices first:
+
+- A **note** capture, format `{{value:content}}`, target file `{{value:filename}}` — both
+  named values arrive with the link, so it runs with nothing to tap.
+- A **photo** capture, target file `{{value:filename}}` again, but format left as the plain
+  `{{VALUE}}` — deliberately unnamed, since that is what makes QuickAdd open its paste box.
+  Nothing can read an image off the clipboard without an actual paste gesture, named value or
+  not, so a photo always needs one.
+
+Then fill in your vault name and the two choice names in the app. **Save to vault** writes the
+note straight into Obsidian, no prompt; the next screen offers a button per photo that copies
+it to the clipboard, then opens Obsidian with the right note already chosen — one paste each.
+There is also no way to check for an existing file over a one-way link, so unlike the folder
+backend this cannot offer Obsidian's ` 2`, ` 3` suffix on a name collision.
+
 ## Using it
 
 1. Open the site and add it to your home screen.
@@ -206,6 +231,13 @@ approximation rather than restating it.
 
 `showDirectoryPicker()` cannot be driven by an automated browser, so the vault write path is
 best checked by hand against a throwaway folder before pointing it at a real vault.
+
+`quickadd.js`'s `noteUri`/`imageUri` build the `obsidian://quickadd` link from an explicit
+connection object rather than the saved one, which is what lets `quickadd.test.js` check the
+exact query string — the `%20` encoding, which values are named and which are not — under
+`node --test` without touching `localStorage` (browser-only, same reason `vault.js`'s `pick()`
+isn't unit tested either). Actually firing the link into a real Obsidian is, like the folder
+picker, a by-hand check.
 
 ### Regenerating the icons
 

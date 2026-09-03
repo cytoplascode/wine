@@ -12,6 +12,8 @@ import { initFieldDrag } from './drag.js';
 import { emptyRecord } from './schema.js';
 import { parseLabel } from './parse.js';
 import * as vault from './vault.js';
+import * as quickadd from './quickadd.js';
+import { getMode, setMode } from './connection.js';
 import { readValues } from './form.js';
 import { save, PermissionNeeded } from './save.js';
 import {
@@ -191,6 +193,49 @@ function enlarge(thumbnail) {
 
 /* ── Saving ─────────────────────────────────────────────────────────── */
 
+const SAVED_TITLES = {
+  vault: 'Saved to your vault',
+  quickadd: 'Note sent to Obsidian',
+  download: 'Downloaded',
+};
+
+const savedPhotos = $('#saved-photos');
+const savedPhotoList = $('#saved-photo-list');
+
+/**
+ * QuickAdd can create the note itself, but it cannot read a photo off the
+ * clipboard without a real paste gesture (see quickadd.js) — so each photo
+ * gets a button here instead: first tap copies it, second tap opens
+ * Obsidian with the right note already chosen, ready to paste into.
+ */
+function renderSavedPhotos(photos) {
+  savedPhotoList.textContent = '';
+  savedPhotos.hidden = !photos || !photos.length;
+  if (!photos) return;
+
+  for (const photo of photos) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn';
+    button.textContent = `Copy ${photo.label.toLowerCase()}`;
+    button.addEventListener('click', async () => {
+      if (button.dataset.copied) {
+        location.href = photo.uri;
+        return;
+      }
+      try {
+        await navigator.clipboard.write([new ClipboardItem({ [photo.blob.type]: photo.blob })]);
+        button.dataset.copied = 'true';
+        button.textContent = 'Open Obsidian to paste';
+        toast(`${photo.label} copied — paste it in once Obsidian opens.`);
+      } catch (err) {
+        toast(`Could not copy the photo: ${err.message}`);
+      }
+    });
+    savedPhotoList.append(button);
+  }
+}
+
 async function saveBottle() {
   const button = $('#btn-save');
 
@@ -209,8 +254,9 @@ async function saveBottle() {
       ocrText: state.ocrText,
     });
 
-    $('#saved-title').textContent = result.mode === 'vault' ? 'Saved to your vault' : 'Downloaded';
+    $('#saved-title').textContent = SAVED_TITLES[result.mode] || 'Saved';
     $('#saved-path').textContent = result.path;
+    renderSavedPhotos(result.photos);
     go('saved');
   } catch (err) {
     toast(err instanceof PermissionNeeded
@@ -224,27 +270,88 @@ async function saveBottle() {
 
 /* ── Vault card ─────────────────────────────────────────────────────── */
 
+/* Two backends, one card: the folder picker Chromium's File System Access
+ * API gives us, or firing Obsidian's QuickAdd plugin by URI for a vault
+ * that sits somewhere a folder picker cannot reach at all — Android's own
+ * per-app "App Storage", say. Whichever the user last chose is what
+ * `save()` actually uses (see connection.js); this section only draws
+ * whichever one is currently selected. */
+
 const vaultDot = $('#vault-dot');
 const vaultStatus = $('#vault-status');
 const vaultButton = $('#btn-connect-vault');
+const modeButton = $('#btn-vault-mode');
+const quickaddForm = $('#quickadd-form');
+const qaVault = $('#qa-vault');
+const qaNoteChoice = $('#qa-note-choice');
+const qaImageChoice = $('#qa-image-choice');
 
-async function renderVaultCard() {
-  const state = await vault.status();
-  const card = vault.describe(state, vault.getVaultName());
+function readQuickAddForm() {
+  return {
+    vault: qaVault.value.trim(),
+    noteChoice: qaNoteChoice.value.trim(),
+    imageChoice: qaImageChoice.value.trim(),
+  };
+}
 
+function renderCard(card) {
   vaultDot.dataset.state = card.dot;
   vaultStatus.textContent = card.text;
-
   if (card.button) {
     [vaultButton.textContent, vaultButton.dataset.action] = card.button;
     vaultButton.hidden = false;
   } else {
     vaultButton.hidden = true;
   }
-  return state;
+}
+
+async function renderVaultCard() {
+  const mode = getMode();
+  quickaddForm.hidden = mode !== 'quickadd';
+  modeButton.textContent = mode === 'quickadd'
+    ? 'Use a folder instead'
+    : "Use Obsidian's QuickAdd instead";
+
+  if (mode === 'quickadd') {
+    quickaddForm.insertAdjacentElement('afterend', vaultButton);
+    const config = quickadd.getConfig();
+    if (config) {
+      qaVault.value = config.vault || '';
+      qaNoteChoice.value = config.noteChoice || '';
+      qaImageChoice.value = config.imageChoice || '';
+    }
+    renderCard(quickadd.isConfigured()
+      ? {
+        dot: 'ok',
+        text: `Set up for “${config.vault}”. Saving writes the note automatically; each photo needs one paste in Obsidian.`,
+        button: ['Save connection', 'save-quickadd'],
+      }
+      : {
+        dot: 'warn',
+        text: 'Fill in your vault name and the two QuickAdd choice names below, then save.',
+        button: ['Save connection', 'save-quickadd'],
+      });
+    return;
+  }
+
+  vaultStatus.insertAdjacentElement('afterend', vaultButton);
+  const state = await vault.status();
+  renderCard(vault.describe(state, vault.getVaultName()));
 }
 
 async function onVaultButton() {
+  if (getMode() === 'quickadd') {
+    const config = readQuickAddForm();
+    if (!config.vault || !config.noteChoice || !config.imageChoice) {
+      toast('Fill in all three fields first.');
+      return;
+    }
+    quickadd.setConfig(config);
+    toast('Saved.');
+    renderVaultCard();
+    return;
+  }
+
   try {
     if (vaultButton.dataset.action === 'reconnect') {
       // requestPermission only works inside a gesture, which is why this lives
@@ -259,6 +366,11 @@ async function onVaultButton() {
   }
   renderVaultCard();
 }
+
+modeButton.addEventListener('click', () => {
+  setMode(getMode() === 'quickadd' ? 'folder' : 'quickadd');
+  renderVaultCard();
+});
 
 onEnter('home', renderVaultCard);
 

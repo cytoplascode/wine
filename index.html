@@ -27,6 +27,23 @@
       </div>
       <p class="muted" id="vault-status">Checking…</p>
       <button class="btn" id="btn-connect-vault">Connect vault</button>
+
+      <div id="quickadd-form" hidden>
+        <div class="field">
+          <label for="qa-vault">Obsidian vault name</label>
+          <input id="qa-vault" type="text" autocapitalize="off" autocorrect="off">
+        </div>
+        <div class="field">
+          <label for="qa-note-choice">Note capture — QuickAdd choice name</label>
+          <input id="qa-note-choice" type="text" autocapitalize="off" autocorrect="off">
+        </div>
+        <div class="field">
+          <label for="qa-image-choice">Photo capture — QuickAdd choice name</label>
+          <input id="qa-image-choice" type="text" autocapitalize="off" autocorrect="off">
+        </div>
+      </div>
+
+      <button class="btn btn-quiet" id="btn-vault-mode">Use Obsidian's QuickAdd instead</button>
     </div>
 
     <div class="card" id="ocr-card">
@@ -146,6 +163,10 @@
     <div class="tick">✓</div>
     <h2 id="saved-title">Saved</h2>
     <p class="muted mono" id="saved-path"></p>
+    <div id="saved-photos" hidden>
+      <p class="muted">The note is already in Obsidian. QuickAdd can't read a photo off the clipboard by itself, so copy each one and paste it in:</p>
+      <div id="saved-photo-list"></div>
+    </div>
   </div>
   <footer class="actions">
     <button class="btn btn-primary btn-big" id="btn-another">Scan another</button>

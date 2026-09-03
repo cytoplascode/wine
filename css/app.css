@@ -758,6 +758,22 @@ body.dragging-field { user-select: none; -webkit-user-select: none; }
 
 .done h2 { margin: 6px 0 0; font-size: 22px; }
 
+#saved-photos {
+  width: 100%;
+  max-width: 360px;
+  margin-top: 8px;
+}
+
+#saved-photos .muted { text-align: left; margin-bottom: 12px; }
+
+#saved-photo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#saved-photo-list .btn { width: 100%; }
+
 /* ── Toast ───────────────────────────────────────────────────────── */
 
 .toast {

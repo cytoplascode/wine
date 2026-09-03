@@ -185,17 +185,6 @@ test('without a food photo the Food field is left empty for later', () => {
   assert.match(note, /\n## Food\nFood::\n/);
 });
 
-test('skipImageLinks leaves both fields bare, food photo or not', () => {
-  // The QuickAdd backend cannot know what Obsidian will name a pasted
-  // attachment, so it must not guess — a wrong guess is a broken embed.
-  const note = buildNote({
-    record: filled(), basename: 'X', hasFood: true, skipImageLinks: true,
-  });
-  assert.match(note, /\n## Label\nLabel::\n/);
-  assert.match(note, /\n## Food\nFood::\n/);
-  assert.doesNotMatch(note, /!\[\[/);
-});
-
 test('with nothing recognised there is no comment block', () => {
   const note = buildNote({ record: emptyRecord(), basename: 'X', ocrText: '   ' });
   assert.ok(!note.includes('%%'));

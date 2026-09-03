@@ -83,13 +83,8 @@ export function buildFrontmatter(record) {
  * frontmatter. The raw OCR text is parked in an Obsidian `%% … %%` comment: it
  * is invisible in reading view and in Bases, but it is there when a guess turns
  * out to be wrong.
- *
- * `skipImageLinks` leaves both fields bare instead of guessing a filename —
- * for the QuickAdd backend, where the image is pasted into Obsidian rather
- * than written by this app, so it is Obsidian's own attachment settings,
- * not this function, that decide what the file ends up called.
  */
-export function buildNote({ record, basename, hasFood = false, ocrText = '', skipImageLinks = false }) {
+export function buildNote({ record, basename, hasFood = false, ocrText = '' }) {
   const parts = [
     '---',
     buildFrontmatter(record),
@@ -99,10 +94,10 @@ export function buildNote({ record, basename, hasFood = false, ocrText = '', ski
     (record.tastingNote || '').trim(),
     '',
     '## Label',
-    skipImageLinks ? 'Label::' : `Label:: ![[${basename}.jpg]]`,
+    `Label:: ![[${basename}.jpg]]`,
     '',
     '## Food',
-    !skipImageLinks && hasFood ? `Food:: ![[${basename} - food.jpg]]` : 'Food::',
+    hasFood ? `Food:: ![[${basename} - food.jpg]]` : 'Food::',
     '',
   ];
 

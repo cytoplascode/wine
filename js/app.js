@@ -1,7 +1,7 @@
 /* Wiring and startup: buttons, screen hooks, service worker lifecycle. */
 
 import {
-  $, state, go, goBack, onEnter, onLeave, toast, resetCapture, bitmapToBlob, blobToPngBlob,
+  $, state, go, goBack, onEnter, onLeave, toast, resetCapture, bitmapToBlob, photoDataUri,
   openOverlay, dismissOverlay,
 } from './ui.js';
 import { initCapture, startCapture, stopCapture } from './camera.js';
@@ -203,10 +203,13 @@ const savedPhotos = $('#saved-photos');
 const savedPhotoList = $('#saved-photo-list');
 
 /**
- * QuickAdd can create the note itself, but it cannot read a photo off the
- * clipboard without a real paste gesture (see quickadd.js) — so each photo
- * gets a button here instead: first tap copies it, second tap opens
- * Obsidian with the right note already chosen, ready to paste into.
+ * One button per photo, one tap each: the photo goes onto the clipboard as a
+ * base64 data URI — text, which is the only thing Obsidian's Android WebView
+ * can actually read back — and then Obsidian opens on a macro that decodes it
+ * and writes the file itself, at exactly the path we name.
+ *
+ * A tap per photo rather than one for all of them because each needs its own
+ * turn on the clipboard, and firing the link hands the screen to Obsidian.
  */
 function renderSavedPhotos(photos) {
   savedPhotoList.textContent = '';
@@ -217,22 +220,20 @@ function renderSavedPhotos(photos) {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'btn';
-    button.textContent = `Copy ${photo.label.toLowerCase()}`;
+    button.textContent = `Send ${photo.label.toLowerCase()}`;
     button.addEventListener('click', async () => {
-      if (button.dataset.copied) {
-        location.href = photo.uri;
-        return;
-      }
+      button.disabled = true;
       try {
-        // The clipboard only accepts image/png for images — the photo is
-        // stored as JPEG, so it has to be re-encoded on the way out.
-        const png = await blobToPngBlob(photo.blob);
-        await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
-        button.dataset.copied = 'true';
-        button.textContent = 'Open Obsidian to paste';
-        toast(`${photo.label} copied — paste it in once Obsidian opens.`);
+        const { dataUri, reduced } = await photoDataUri(photo.blob);
+        await navigator.clipboard.writeText(dataUri);
+        if (reduced) toast(`${photo.label} compressed a little to fit the clipboard.`);
+        button.dataset.sent = 'true';
+        button.textContent = `Send ${photo.label.toLowerCase()} again`;
+        location.href = photo.uri;
       } catch (err) {
-        toast(`Could not copy the photo: ${err.message}`);
+        toast(`Could not send the photo: ${err.message}`);
+      } finally {
+        button.disabled = false;
       }
     });
     savedPhotoList.append(button);

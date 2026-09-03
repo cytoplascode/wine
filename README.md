@@ -95,31 +95,57 @@ Install the **QuickAdd** community plugin, then set up two choices exactly like 
    - Turn *off* anything that adds its own text — task checkbox, bullet point, a fixed
      template header — the content is already a complete note, frontmatter included.
 
-2. **The photo.** New Choice → **Capture** again. Name it whatever you like — this name goes
-   into the app's "Photo capture" field. Under its settings:
-   - **Capture To** → **Format** → `{{value:filename}}`, same token as above. This is
-     deliberate, not a mistake: a Capture always writes into a *note*, so the photo's capture
-     targets the same note the first choice just created, not a `.jpg` path of its own —
-     there's no such thing as a Capture aimed straight at an image file. Obsidian pastes the
-     photo in as an attachment and inserts an embed wherever this capture writes to.
-   - **Capture Format** → leave it as the plain, unnamed `{{VALUE}}` — do **not** name it.
-     That's what forces QuickAdd to open its input box instead of running silently, and the
-     box is the only thing in QuickAdd that can catch a pasted image at all.
-   - Leave **Insert Mode** to append (or set an "insert after" point under `## Label` if
-     you'd like it to land closer to that heading) — either way it's a normal QuickAdd
-     append, not something this app controls.
+   Both values are *named*, which is what makes this run silently. QuickAdd only fills a named
+   value from a link; a plain unnamed `{{VALUE}}` always stops and asks, by design.
+
+2. **The photo.** This one is a **Macro**, not a Capture — a Capture can only write text into
+   a note, and it cannot pick an image up off the clipboard by itself. So the photo travels as
+   a base64 data URI in the clipboard's *text*, which is the one thing Obsidian's Android
+   WebView will read back, and a script decodes it and writes the real file.
+
+   Put this in a note (mobile Obsidian cannot open `.js` files, but a `js` code block in a
+   note works), say `scripts/Save clipboard image.md`:
+
+   ````
+   ```js
+   module.exports = async (params) => {
+     const { app, variables } = params;
+     const path = variables.filename;
+     if (!path) throw new Error("No filename passed in");
+
+     const text = (await navigator.clipboard.readText()) || "";
+     const m = /^data:image\/[a-z+]+;base64,([\s\S]+)$/.exec(text.trim());
+     if (!m) throw new Error("No image data on the clipboard");
+
+     const bin = atob(m[1]);
+     const bytes = new Uint8Array(bin.length);
+     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+
+     const existing = app.vault.getAbstractFileByPath(path);
+     if (existing) await app.vault.modifyBinary(existing, bytes.buffer);
+     else await app.vault.createBinary(path, bytes.buffer);
+   };
+   ```
+   ````
+
+   Then: New Choice → **Macro**, name it whatever you like — this name goes into the app's
+   "Photo capture" field — and give it a single **User Script** step pointing at that note.
 
 Then, in the app, fill in your vault name and those two choice names — spelled exactly as you
 named them, they're matched by exact string.
 
-**Save to vault** writes the note straight into Obsidian, no prompt. Because this app cannot
-know in advance what Obsidian will end up calling a pasted attachment, the note's `Label::`
-and `Food::` lines are left bare rather than pointed at a guessed filename — the photo lands
-as a normal embed appended in the note instead of neatly inline next to those fields. The next
-screen offers a button per photo: first tap copies it to the clipboard, second tap opens
-Obsidian with that same note already chosen, ready for you to paste. There is also no way to
-check for an existing file over a one-way link, so unlike the folder backend this cannot offer
-Obsidian's ` 2`, ` 3` suffix on a name collision.
+**Save to vault** writes the note straight into Obsidian, no prompt. The next screen offers a
+button per photo; one tap puts that photo on the clipboard and opens Obsidian, and the macro
+writes it — no pasting, and no prompt either. Because the script is handed the path, the files
+are named exactly as the note's own `Label::` and `Food::` embeds expect, the same as the
+folder backend writes them. A tap per photo rather than one for both: each needs its own turn
+on the clipboard.
+
+Two limits worth knowing. Android's clipboard is not sized for unbounded text — it shares the
+roughly one-megabyte buffer everything crossing a process boundary uses — so a photo over
+budget is re-encoded, quality first and then size, until it fits; the app says so when that
+happens. And there is no way to check for an existing file over a one-way link, so unlike the
+folder backend this cannot offer Obsidian's ` 2`, ` 3` suffix on a name collision.
 
 ## Using it
 

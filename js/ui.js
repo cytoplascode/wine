@@ -122,28 +122,63 @@ export function bitmapToBlob(bitmap, quality = 0.9) {
   return canvasToBlob(canvas, quality);
 }
 
-/**
- * Re-encode a blob as PNG. The system clipboard's write() only accepts
- * `image/png` for images — not the `image/jpeg` this app stores photos
- * as — so this is the one conversion the QuickAdd "copy this photo" step
- * needs before it can put anything on the clipboard at all.
- */
-export async function blobToPngBlob(blob) {
-  const bitmap = await createImageBitmap(blob);
-  const canvas = document.createElement('canvas');
-  canvas.width = bitmap.width;
-  canvas.height = bitmap.height;
-  canvas.getContext('2d').drawImage(bitmap, 0, 0);
-  bitmap.close();
-  return canvasToBlob(canvas, undefined, 'image/png');
-}
-
-export function canvasToBlob(canvas, quality = 0.9, type = 'image/jpeg') {
+export function canvasToBlob(canvas, quality = 0.9) {
   return new Promise((resolve, reject) => {
     canvas.toBlob(
       (blob) => (blob ? resolve(blob) : reject(new Error('Could not encode the image'))),
-      type,
+      'image/jpeg',
       quality,
     );
   });
+}
+
+export function blobToDataUri(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Could not read the image'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+/* Android's clipboard is not a place to put an unbounded amount of text: it
+ * travels through the same transaction buffer as everything else crossing a
+ * process boundary, around a megabyte, and a photo that overruns it fails in
+ * whatever way that particular phone chooses. A worst-case label measured
+ * ~1.2 MB as base64, so a photo bound for the clipboard is re-encoded until
+ * it fits, quality first and only then size. */
+const CLIPBOARD_BUDGET = 700_000;
+const QUALITY_STEPS = [0.75, 0.6];
+const FALLBACK_WIDTH = 1200;
+
+/**
+ * The photo as a data URI small enough to survive the clipboard, re-encoded
+ * only if the stored one is too big. Returns `{ dataUri, reduced }` so the
+ * caller can say when a photo went across at less than full quality.
+ */
+export async function photoDataUri(blob) {
+  const first = await blobToDataUri(blob);
+  if (first.length <= CLIPBOARD_BUDGET) return { dataUri: first, reduced: false };
+
+  const bitmap = await createImageBitmap(blob);
+  try {
+    for (const quality of QUALITY_STEPS) {
+      const candidate = await blobToDataUri(await drawToBlob(bitmap, bitmap.width, quality));
+      if (candidate.length <= CLIPBOARD_BUDGET) return { dataUri: candidate, reduced: true };
+    }
+    const scale = Math.min(1, FALLBACK_WIDTH / Math.max(bitmap.width, bitmap.height));
+    const smaller = await drawToBlob(bitmap, Math.round(bitmap.width * scale), 0.7);
+    return { dataUri: await blobToDataUri(smaller), reduced: true };
+  } finally {
+    bitmap.close();
+  }
+}
+
+function drawToBlob(bitmap, width, quality) {
+  const scale = width / bitmap.width;
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  return canvasToBlob(canvas, quality);
 }

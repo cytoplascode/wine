@@ -122,11 +122,27 @@ export function bitmapToBlob(bitmap, quality = 0.9) {
   return canvasToBlob(canvas, quality);
 }
 
-export function canvasToBlob(canvas, quality = 0.9) {
+/**
+ * Re-encode a blob as PNG. The system clipboard's write() only accepts
+ * `image/png` for images — not the `image/jpeg` this app stores photos
+ * as — so this is the one conversion the QuickAdd "copy this photo" step
+ * needs before it can put anything on the clipboard at all.
+ */
+export async function blobToPngBlob(blob) {
+  const bitmap = await createImageBitmap(blob);
+  const canvas = document.createElement('canvas');
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  canvas.getContext('2d').drawImage(bitmap, 0, 0);
+  bitmap.close();
+  return canvasToBlob(canvas, undefined, 'image/png');
+}
+
+export function canvasToBlob(canvas, quality = 0.9, type = 'image/jpeg') {
   return new Promise((resolve, reject) => {
     canvas.toBlob(
       (blob) => (blob ? resolve(blob) : reject(new Error('Could not encode the image'))),
-      'image/jpeg',
+      type,
       quality,
     );
   });

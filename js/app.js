@@ -1,7 +1,7 @@
 /* Wiring and startup: buttons, screen hooks, service worker lifecycle. */
 
 import {
-  $, state, go, goBack, onEnter, onLeave, toast, resetCapture, bitmapToBlob,
+  $, state, go, goBack, onEnter, onLeave, toast, resetCapture, bitmapToBlob, blobToPngBlob,
   openOverlay, dismissOverlay,
 } from './ui.js';
 import { initCapture, startCapture, stopCapture } from './camera.js';
@@ -224,7 +224,10 @@ function renderSavedPhotos(photos) {
         return;
       }
       try {
-        await navigator.clipboard.write([new ClipboardItem({ [photo.blob.type]: photo.blob })]);
+        // The clipboard only accepts image/png for images — the photo is
+        // stored as JPEG, so it has to be re-encoded on the way out.
+        const png = await blobToPngBlob(photo.blob);
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
         button.dataset.copied = 'true';
         button.textContent = 'Open Obsidian to paste';
         toast(`${photo.label} copied — paste it in once Obsidian opens.`);

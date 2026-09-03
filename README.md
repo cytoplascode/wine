@@ -85,67 +85,80 @@ The vault card has a second mode for exactly this: **Use Obsidian's QuickAdd ins
 never touches the filesystem — it hands off to Obsidian over a plain `obsidian://quickadd`
 link, and Obsidian writes with its own, already-unrestricted storage access.
 
-Install the **QuickAdd** community plugin, then set up two choices exactly like this:
+Install the **QuickAdd** community plugin, then set up **one** choice — a Macro.
 
-1. **The note.** New Choice → **Capture**. Name it whatever you like — this exact name goes
-   into the app's "Note capture" field. Under its settings:
-   - **Capture To** → **Format** → `{{value:filename}}` (a file, not a folder, and it will be
-     a new file every time — turn on **Create file if it doesn't exist**).
-   - **Capture Format** → `{{value:content}}` — and only that; nothing else in the format box.
-   - Turn *off* anything that adds its own text — task checkbox, bullet point, a fixed
-     template header — the content is already a complete note, frontmatter included.
+The whole bottle travels as a single JSON parcel on the clipboard: the note's text and every
+photo as a base64 data URI. The link itself carries nothing but the vault and the macro name.
+That is deliberate — Obsidian's Android WebView will read *text* back off the clipboard but
+not an image, and an `obsidian://` link is an Android intent, no place for a photo. So one
+script picks the parcel up and writes all of it.
 
-   Both values are *named*, which is what makes this run silently. QuickAdd only fills a named
-   value from a link; a plain unnamed `{{VALUE}}` always stops and asks, by design.
+Put this in a note (mobile Obsidian cannot open `.js` files, but a `js` code block in a note
+works), say `scripts/Save from Label Scanner.md`:
 
-2. **The photo.** This one is a **Macro**, not a Capture — a Capture can only write text into
-   a note, and it cannot pick an image up off the clipboard by itself. So the photo travels as
-   a base64 data URI in the clipboard's *text*, which is the one thing Obsidian's Android
-   WebView will read back, and a script decodes it and writes the real file.
+````
+```js
+const name = (path) => path.slice(path.lastIndexOf("/") + 1);
+const rename = (path, base, suffix) =>
+  suffix
+    ? path.slice(0, path.length - name(path).length) +
+      name(path).replace(base, () => base + suffix)
+    : path;
 
-   Put this in a note (mobile Obsidian cannot open `.js` files, but a `js` code block in a
-   note works), say `scripts/Save clipboard image.md`:
+module.exports = async (params) => {
+  const { app } = params;
 
-   ````
-   ```js
-   module.exports = async (params) => {
-     const { app, variables } = params;
-     const path = variables.filename;
-     if (!path) throw new Error("No filename passed in");
+  const raw = (await navigator.clipboard.readText()) || "";
+  let parcel;
+  try { parcel = JSON.parse(raw); } catch (e) { parcel = null; }
+  if (!parcel || parcel.v !== 1 || !parcel.note)
+    throw new Error("Nothing from Label Scanner on the clipboard");
 
-     const text = (await navigator.clipboard.readText()) || "";
-     const m = /^data:image\/[a-z+]+;base64,([\s\S]+)$/.exec(text.trim());
-     if (!m) throw new Error("No image data on the clipboard");
+  const folder = parcel.note.path.slice(0, parcel.note.path.lastIndexOf("/"));
+  if (folder && !app.vault.getAbstractFileByPath(folder))
+    await app.vault.createFolder(folder);
 
-     const bin = atob(m[1]);
-     const bytes = new Uint8Array(bin.length);
-     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  // Obsidian's own " 2", " 3" convention, decided once for the note and its
+  // photos together so the note's ![[…]] embeds keep pointing at real files.
+  const base = name(parcel.note.path).slice(0, -3);
+  const paths = [parcel.note.path, ...parcel.files.map((f) => f.path)];
+  const taken = (suffix) =>
+    paths.some((p) => app.vault.getAbstractFileByPath(rename(p, base, suffix)));
+  let suffix = "";
+  for (let n = 2; taken(suffix) && n < 1000; n++) suffix = " " + n;
 
-     const existing = app.vault.getAbstractFileByPath(path);
-     if (existing) await app.vault.modifyBinary(existing, bytes.buffer);
-     else await app.vault.createBinary(path, bytes.buffer);
-   };
-   ```
-   ````
+  let content = parcel.note.content;
+  for (const file of parcel.files) {
+    const path = rename(file.path, base, suffix);
+    content = content.split("![[" + name(file.path) + "]]")
+                     .join("![[" + name(path) + "]]");
+    const bin = atob(file.data.slice(file.data.indexOf(",") + 1));
+    const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+    await app.vault.createBinary(path, bytes.buffer);
+  }
+  // The note goes last, so a link can never point at an image that is not there.
+  await app.vault.create(rename(parcel.note.path, base, suffix), content);
+};
+```
+````
 
-   Then: New Choice → **Macro**, name it whatever you like — this name goes into the app's
-   "Photo capture" field — and give it a single **User Script** step pointing at that note.
+Then: New Choice → **Macro**, name it whatever you like — this name goes into the app's
+"QuickAdd macro name" field — and give it a single **User Script** step pointing at that note.
 
-Then, in the app, fill in your vault name and those two choice names — spelled exactly as you
-named them, they're matched by exact string.
+Finally, in the app, fill in your vault name and that macro name, spelled exactly as you named
+them: they are matched by exact string.
 
-**Save to vault** writes the note straight into Obsidian, no prompt. The next screen offers a
-button per photo; one tap puts that photo on the clipboard and opens Obsidian, and the macro
-writes it — no pasting, and no prompt either. Because the script is handed the path, the files
-are named exactly as the note's own `Label::` and `Food::` embeds expect, the same as the
-folder backend writes them. A tap per photo rather than one for both: each needs its own turn
-on the clipboard.
+**Save to vault** then does the whole bottle in one tap. No prompt, no pasting, and nothing to
+finish off on the next screen. Because the script is handed the paths, the photos get exactly
+the filenames the note's own `Label::` and `Food::` embeds point at, the same as the folder
+backend writes them — and because it can see the vault, it renames the whole set on a collision
+just as the folder backend does.
 
-Two limits worth knowing. Android's clipboard is not sized for unbounded text — it shares the
-roughly one-megabyte buffer everything crossing a process boundary uses — so a photo over
-budget is re-encoded, quality first and then size, until it fits; the app says so when that
-happens. And there is no way to check for an existing file over a one-way link, so unlike the
-folder backend this cannot offer Obsidian's ` 2`, ` 3` suffix on a name collision.
+One limit worth knowing. Android's clipboard is not sized for unbounded text — it shares the
+roughly one-megabyte buffer everything crossing a process boundary uses — so the photos share a
+budget, and one over its share is re-encoded, quality first and then size, until it fits. The
+app says so when that happens. A bottle with a food photo therefore squeezes each photo a
+little harder than one without.
 
 ## Using it
 
@@ -280,12 +293,12 @@ approximation rather than restating it.
 `showDirectoryPicker()` cannot be driven by an automated browser, so the vault write path is
 best checked by hand against a throwaway folder before pointing it at a real vault.
 
-`quickadd.js`'s `noteUri`/`imageUri` build the `obsidian://quickadd` link from an explicit
-connection object rather than the saved one, which is what lets `quickadd.test.js` check the
-exact query string — the `%20` encoding, which values are named and which are not — under
-`node --test` without touching `localStorage` (browser-only, same reason `vault.js`'s `pick()`
-isn't unit tested either). Actually firing the link into a real Obsidian is, like the folder
-picker, a by-hand check.
+`quickadd.js`'s `macroUri` and `buildPayload` take the connection and the bottle as explicit
+arguments rather than reading the saved ones, which is what lets `quickadd.test.js` check the
+exact query string (the `%20` encoding, and that the link stays empty of data) and the parcel's
+shape under `node --test` without touching `localStorage` (browser-only, same reason
+`vault.js`'s `pick()` isn't unit tested either). Actually firing the link into a real Obsidian
+is, like the folder picker, a by-hand check.
 
 ### Regenerating the icons
 

@@ -4,6 +4,7 @@
 import * as vault from './vault.js';
 import * as quickadd from './quickadd.js';
 import { getMode } from './connection.js';
+import { photoDataUri, CLIPBOARD_BUDGET } from './ui.js';
 import {
   noteBasename,
   asciiBasename,
@@ -26,7 +27,7 @@ export class PermissionNeeded extends Error {
 /**
  * Save one bottle.
  * Returns `{ mode: 'vault' | 'download', path }` for the folder and download
- * paths, or `{ mode: 'quickadd', path, photos }` — see saveViaQuickAdd.
+ * paths, or `{ mode: 'quickadd', path, sent, … }` — see saveViaQuickAdd.
  */
 export async function save({ record, labelBlob, foodBlob, ocrText }) {
   if (getMode() === 'quickadd' && quickadd.isConfigured()) {
@@ -61,38 +62,48 @@ export async function save({ record, labelBlob, foodBlob, ocrText }) {
 }
 
 /**
- * Fire the note straight into Obsidian — no prompt, since both the target
- * path and the content ride in as named values. The photos follow one at a
- * time, so this hands the caller a worklist rather than writing them here:
- * each entry is the blob to put on the clipboard and the link that runs the
- * macro which decodes it into the vault.
+ * Hand the whole bottle over in one parcel: the note and every photo go onto
+ * the clipboard as JSON, and one link runs the macro that unpacks it. The
+ * photos share the clipboard's budget, so a bottle with a food photo squeezes
+ * each a little harder than one without.
  *
- * Because that macro writes the file itself, at the path named here, the
- * filenames are exactly the ones the note's own `Label::` and `Food::`
- * embeds point at — the same names the folder backend writes.
+ * Because the macro does the writing, at the paths named here, the photos get
+ * exactly the filenames the note's own `Label::` and `Food::` embeds point at
+ * — the same names the folder backend writes.
+ *
+ * The clipboard write can be refused if the tap that started this has already
+ * expired, so the result says whether it landed; the caller offers a retry
+ * rather than leaving the bottle half-sent.
  */
-function saveViaQuickAdd({ record, labelBlob, foodBlob, ocrText }) {
+async function saveViaQuickAdd({ record, labelBlob, foodBlob, ocrText }) {
   const config = quickadd.getConfig();
   const basename = noteBasename(record);
   const markdown = buildNote({ record, basename, hasFood: Boolean(foodBlob), ocrText });
   const notePath = `${WINES_FOLDER}/${noteFilename(basename)}`;
 
-  location.href = quickadd.noteUri(config, notePath, markdown);
+  const blobs = [{ path: `${WINES_FOLDER}/${labelFilename(basename)}`, blob: labelBlob }];
+  if (foodBlob) blobs.push({ path: `${WINES_FOLDER}/${foodFilename(basename)}`, blob: foodBlob });
 
-  const photos = [{
-    label: 'Label photo',
-    blob: labelBlob,
-    uri: quickadd.imageUri(config, `${WINES_FOLDER}/${labelFilename(basename)}`),
-  }];
-  if (foodBlob) {
-    photos.push({
-      label: 'Food photo',
-      blob: foodBlob,
-      uri: quickadd.imageUri(config, `${WINES_FOLDER}/${foodFilename(basename)}`),
-    });
+  const share = Math.floor((CLIPBOARD_BUDGET - markdown.length) / blobs.length);
+  const photos = [];
+  let reduced = false;
+  for (const entry of blobs) {
+    const encoded = await photoDataUri(entry.blob, share);
+    reduced = reduced || encoded.reduced;
+    photos.push({ path: entry.path, dataUri: encoded.dataUri });
   }
 
-  return { mode: 'quickadd', path: notePath, photos };
+  const payload = quickadd.buildPayload({ notePath, content: markdown, photos });
+  const uri = quickadd.macroUri(config);
+
+  try {
+    await navigator.clipboard.writeText(payload);
+  } catch {
+    return { mode: 'quickadd', path: notePath, sent: false, payload, uri, reduced };
+  }
+
+  location.href = uri;
+  return { mode: 'quickadd', path: notePath, sent: true, reduced };
 }
 
 /**

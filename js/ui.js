@@ -143,28 +143,29 @@ export function blobToDataUri(blob) {
 
 /* Android's clipboard is not a place to put an unbounded amount of text: it
  * travels through the same transaction buffer as everything else crossing a
- * process boundary, around a megabyte, and a photo that overruns it fails in
+ * process boundary, around a megabyte, and a parcel that overruns it fails in
  * whatever way that particular phone chooses. A worst-case label measured
- * ~1.2 MB as base64, so a photo bound for the clipboard is re-encoded until
- * it fits, quality first and only then size. */
-const CLIPBOARD_BUDGET = 700_000;
+ * ~1.2 MB as base64 on its own, and a bottle can carry two, so each photo is
+ * re-encoded until it fits its share — quality first, and only then size. */
+export const CLIPBOARD_BUDGET = 800_000;
 const QUALITY_STEPS = [0.75, 0.6];
 const FALLBACK_WIDTH = 1200;
 
 /**
  * The photo as a data URI small enough to survive the clipboard, re-encoded
- * only if the stored one is too big. Returns `{ dataUri, reduced }` so the
- * caller can say when a photo went across at less than full quality.
+ * only if the stored one is too big for `budget` characters. Returns
+ * `{ dataUri, reduced }` so the caller can say when a photo went across at
+ * less than full quality.
  */
-export async function photoDataUri(blob) {
+export async function photoDataUri(blob, budget = CLIPBOARD_BUDGET) {
   const first = await blobToDataUri(blob);
-  if (first.length <= CLIPBOARD_BUDGET) return { dataUri: first, reduced: false };
+  if (first.length <= budget) return { dataUri: first, reduced: false };
 
   const bitmap = await createImageBitmap(blob);
   try {
     for (const quality of QUALITY_STEPS) {
       const candidate = await blobToDataUri(await drawToBlob(bitmap, bitmap.width, quality));
-      if (candidate.length <= CLIPBOARD_BUDGET) return { dataUri: candidate, reduced: true };
+      if (candidate.length <= budget) return { dataUri: candidate, reduced: true };
     }
     const scale = Math.min(1, FALLBACK_WIDTH / Math.max(bitmap.width, bitmap.height));
     const smaller = await drawToBlob(bitmap, Math.round(bitmap.width * scale), 0.7);

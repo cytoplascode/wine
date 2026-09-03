@@ -1,37 +1,58 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { noteUri, imageUri } from '../js/quickadd.js';
+import { macroUri, buildPayload } from '../js/quickadd.js';
 
-/* noteUri/imageUri take the connection explicitly rather than reading
- * localStorage themselves — same reason as rest-vault.js's request
- * functions: it keeps the URI-building free of browser-only storage, which
- * is what lets it run under node --test. getConfig/setConfig, which do
- * touch localStorage, are exercised by hand instead, like vault.js's pick(). */
+/* macroUri/buildPayload take the connection and the bottle explicitly rather
+ * than reading localStorage themselves, which is what lets them run under
+ * node --test. getConfig/setConfig, which do touch storage, are exercised by
+ * hand instead, like vault.js's pick(). */
 
-const config = { vault: 'My Vault', noteChoice: 'Note capture', imageChoice: 'Image capture' };
+const config = { vault: 'My Vault', choice: 'Save wine' };
 
-test('noteUri encodes spaces as %20, not the form-encoded +', () => {
-  const uri = noteUri(config, 'wines/Test.md', 'hello');
+test('the link encodes spaces as %20, not the form-encoded +', () => {
+  const uri = macroUri(config);
+  assert.match(uri, /^obsidian:\/\/quickadd\?/);
   assert.match(uri, /vault=My%20Vault/);
-  assert.match(uri, /choice=Note%20capture/);
+  assert.match(uri, /choice=Save%20wine/);
   assert.doesNotMatch(uri, /\+/);
 });
 
-test('noteUri passes the path and content as named values', () => {
-  const uri = noteUri(config, 'wines/Château Ausone - 2015.md', '---\nfoo: bar\n---');
-  assert.match(uri, /value-filename=wines%2FCh%C3%A2teau%20Ausone%20-%202015\.md/);
-  assert.match(uri, /value-content=---%0Afoo%3A%20bar%0A---/);
+test('the link carries no data — that is what keeps it short', () => {
+  // Everything rides on the clipboard precisely so an Android intent never
+  // has to carry a note, let alone a photo.
+  const uri = macroUri(config);
+  assert.doesNotMatch(uri, /value-/);
+  assert.ok(uri.length < 120);
 });
 
-test('imageUri passes only the target path — content is deliberately not a named value', () => {
-  const uri = imageUri(config, 'wines/Test.jpg');
-  assert.match(uri, /choice=Image%20capture/);
-  assert.match(uri, /value-filename=wines%2FTest\.jpg/);
-  assert.doesNotMatch(uri, /value-content/);
+test('the payload carries the note and a file per photo', () => {
+  const payload = JSON.parse(buildPayload({
+    notePath: 'wines/Château Ausone - 2015.md',
+    content: '---\nfileClass: Wine\n---',
+    photos: [
+      { path: 'wines/Château Ausone - 2015.jpg', dataUri: 'data:image/jpeg;base64,AAA' },
+      { path: 'wines/Château Ausone - 2015 - food.jpg', dataUri: 'data:image/jpeg;base64,BBB' },
+    ],
+  }));
+
+  assert.equal(payload.v, 1);
+  assert.deepEqual(payload.note, {
+    path: 'wines/Château Ausone - 2015.md',
+    content: '---\nfileClass: Wine\n---',
+  });
+  assert.deepEqual(payload.files.map((f) => f.path), [
+    'wines/Château Ausone - 2015.jpg',
+    'wines/Château Ausone - 2015 - food.jpg',
+  ]);
+  assert.equal(payload.files[1].data, 'data:image/jpeg;base64,BBB');
 });
 
-test('both URIs target the obsidian://quickadd handler', () => {
-  assert.match(noteUri(config, 'a.md', 'x'), /^obsidian:\/\/quickadd\?/);
-  assert.match(imageUri(config, 'a.jpg'), /^obsidian:\/\/quickadd\?/);
+test('a bottle with no food photo carries just the one file', () => {
+  const payload = JSON.parse(buildPayload({
+    notePath: 'wines/X.md',
+    content: 'note',
+    photos: [{ path: 'wines/X.jpg', dataUri: 'data:image/jpeg;base64,AAA' }],
+  }));
+  assert.equal(payload.files.length, 1);
 });

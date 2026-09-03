@@ -1,7 +1,7 @@
 /* Wiring and startup: buttons, screen hooks, service worker lifecycle. */
 
 import {
-  $, state, go, goBack, onEnter, onLeave, toast, resetCapture, bitmapToBlob, photoDataUri,
+  $, state, go, goBack, onEnter, onLeave, toast, resetCapture, bitmapToBlob,
   openOverlay, dismissOverlay,
 } from './ui.js';
 import { initCapture, startCapture, stopCapture } from './camera.js';
@@ -199,45 +199,31 @@ const SAVED_TITLES = {
   download: 'Downloaded',
 };
 
-const savedPhotos = $('#saved-photos');
-const savedPhotoList = $('#saved-photo-list');
-
 /**
- * One button per photo, one tap each: the photo goes onto the clipboard as a
- * base64 data URI — text, which is the only thing Obsidian's Android WebView
- * can actually read back — and then Obsidian opens on a macro that decodes it
- * and writes the file itself, at exactly the path we name.
- *
- * A tap per photo rather than one for all of them because each needs its own
- * turn on the clipboard, and firing the link hands the screen to Obsidian.
+ * The bottle goes over in one parcel on one tap, so there is nothing to do
+ * here when it lands — this is only the recovery. A clipboard write can be
+ * refused when the tap that started the save has already expired, which
+ * leaves the parcel built but unsent; rather than lose it, offer it again as
+ * its own tap, which carries its own fresh permission to write.
  */
-function renderSavedPhotos(photos) {
-  savedPhotoList.textContent = '';
-  savedPhotos.hidden = !photos || !photos.length;
-  if (!photos) return;
+function renderUnsent(result) {
+  const panel = $('#saved-retry');
+  panel.hidden = result.mode !== 'quickadd' || result.sent !== false;
+  if (panel.hidden) return;
 
-  for (const photo of photos) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'btn';
-    button.textContent = `Send ${photo.label.toLowerCase()}`;
-    button.addEventListener('click', async () => {
-      button.disabled = true;
-      try {
-        const { dataUri, reduced } = await photoDataUri(photo.blob);
-        await navigator.clipboard.writeText(dataUri);
-        if (reduced) toast(`${photo.label} compressed a little to fit the clipboard.`);
-        button.dataset.sent = 'true';
-        button.textContent = `Send ${photo.label.toLowerCase()} again`;
-        location.href = photo.uri;
-      } catch (err) {
-        toast(`Could not send the photo: ${err.message}`);
-      } finally {
-        button.disabled = false;
-      }
-    });
-    savedPhotoList.append(button);
-  }
+  const button = $('#btn-saved-retry');
+  button.disabled = false;
+  button.onclick = async () => {
+    button.disabled = true;
+    try {
+      await navigator.clipboard.writeText(result.payload);
+      location.href = result.uri;
+    } catch (err) {
+      toast(`Could not send it: ${err.message}`);
+    } finally {
+      button.disabled = false;
+    }
+  };
 }
 
 async function saveBottle() {
@@ -258,9 +244,12 @@ async function saveBottle() {
       ocrText: state.ocrText,
     });
 
-    $('#saved-title').textContent = SAVED_TITLES[result.mode] || 'Saved';
+    $('#saved-title').textContent = result.sent === false
+      ? 'Not sent yet'
+      : SAVED_TITLES[result.mode] || 'Saved';
     $('#saved-path').textContent = result.path;
-    renderSavedPhotos(result.photos);
+    if (result.reduced) toast('A photo was compressed a little to fit the clipboard.');
+    renderUnsent(result);
     go('saved');
   } catch (err) {
     toast(err instanceof PermissionNeeded
@@ -287,15 +276,10 @@ const vaultButton = $('#btn-connect-vault');
 const modeButton = $('#btn-vault-mode');
 const quickaddForm = $('#quickadd-form');
 const qaVault = $('#qa-vault');
-const qaNoteChoice = $('#qa-note-choice');
-const qaImageChoice = $('#qa-image-choice');
+const qaChoice = $('#qa-choice');
 
 function readQuickAddForm() {
-  return {
-    vault: qaVault.value.trim(),
-    noteChoice: qaNoteChoice.value.trim(),
-    imageChoice: qaImageChoice.value.trim(),
-  };
+  return { vault: qaVault.value.trim(), choice: qaChoice.value.trim() };
 }
 
 function renderCard(card) {
@@ -321,18 +305,17 @@ async function renderVaultCard() {
     const config = quickadd.getConfig();
     if (config) {
       qaVault.value = config.vault || '';
-      qaNoteChoice.value = config.noteChoice || '';
-      qaImageChoice.value = config.imageChoice || '';
+      qaChoice.value = config.choice || '';
     }
     renderCard(quickadd.isConfigured()
       ? {
         dot: 'ok',
-        text: `Set up for “${config.vault}”. Saving writes the note automatically; each photo takes one more tap.`,
+        text: `Set up for “${config.vault}”. Saving sends the note and its photos over in one tap.`,
         button: ['Save connection', 'save-quickadd'],
       }
       : {
         dot: 'warn',
-        text: 'Fill in your vault name and the two QuickAdd choice names below, then save.',
+        text: 'Fill in your vault name and the name of your QuickAdd macro below, then save.',
         button: ['Save connection', 'save-quickadd'],
       });
     return;
@@ -346,8 +329,8 @@ async function renderVaultCard() {
 async function onVaultButton() {
   if (getMode() === 'quickadd') {
     const config = readQuickAddForm();
-    if (!config.vault || !config.noteChoice || !config.imageChoice) {
-      toast('Fill in all three fields first.');
+    if (!config.vault || !config.choice) {
+      toast('Fill in both fields first.');
       return;
     }
     quickadd.setConfig(config);

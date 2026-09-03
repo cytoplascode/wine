@@ -34,12 +34,8 @@
           <input id="qa-vault" type="text" autocapitalize="off" autocorrect="off">
         </div>
         <div class="field">
-          <label for="qa-note-choice">Note capture — QuickAdd choice name</label>
-          <input id="qa-note-choice" type="text" autocapitalize="off" autocorrect="off">
-        </div>
-        <div class="field">
-          <label for="qa-image-choice">Photo capture — QuickAdd choice name</label>
-          <input id="qa-image-choice" type="text" autocapitalize="off" autocorrect="off">
+          <label for="qa-choice">QuickAdd macro name</label>
+          <input id="qa-choice" type="text" autocapitalize="off" autocorrect="off">
         </div>
       </div>
 
@@ -163,9 +159,9 @@
     <div class="tick">✓</div>
     <h2 id="saved-title">Saved</h2>
     <p class="muted mono" id="saved-path"></p>
-    <div id="saved-photos" hidden>
-      <p class="muted">The note is already in Obsidian. Send each photo over too — one tap each, and Obsidian files it away itself:</p>
-      <div id="saved-photo-list"></div>
+    <div id="saved-retry" hidden>
+      <p class="muted">The bottle is ready but the clipboard would not take it — that usually means the tap took too long. Nothing is lost; send it now:</p>
+      <button type="button" class="btn" id="btn-saved-retry">Send to Obsidian</button>
     </div>
   </div>
   <footer class="actions">

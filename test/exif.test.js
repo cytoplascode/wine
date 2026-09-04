@@ -228,9 +228,10 @@ test('a zeroed-out GPS IFD reads as no fix, not Null Island', () => {
   assert.equal(location, null);
 });
 
-test('an unset rational (n/0) reads as no fix rather than folding to zero', () => {
-  // EXIF's own convention for "value not available" — the other shape a
-  // missing fix takes, on cameras that zero the denominator instead.
+test('an all-unset position (n/0 throughout) also reads as no fix', () => {
+  // Folds to (0, 0) the same way the 0/1 case does, and is caught by the
+  // same final check — not because an n/0 rational is rejected on its own
+  // (see below: that would wrongly reject a real position too).
   const location = parseExifLocation(buildJpeg({
     gps: { latRef: 'N', lat: [[0, 0], [0, 0], [0, 0]], lonRef: 'E', lon: [[0, 0], [0, 0], [0, 0]] },
   }));
@@ -243,6 +244,19 @@ test('a real position with a zero seconds component still reads correctly', () =
   const location = parseExifLocation(buildJpeg({
     gps: { latRef: 'N', lat: [[48, 1], [51, 1], [0, 1]], lonRef: 'E', lon: [[2, 1], [21, 1], [0, 1]] },
   }));
+  closeTo(location.lat, 48 + 51 / 60);
+  closeTo(location.lon, 2 + 21 / 60);
+});
+
+test('a real position with an unset (n/0) seconds component still reads correctly', () => {
+  // The actual shape a real report came back with: some encoders record
+  // only degrees and decimal minutes and leave seconds as an explicit n/0
+  // "not available" rather than 0/1 — rejecting the whole coordinate over
+  // that one unset part is the bug this guards against.
+  const location = parseExifLocation(buildJpeg({
+    gps: { latRef: 'N', lat: [[48, 1], [51, 1], [0, 0]], lonRef: 'E', lon: [[2, 1], [21, 1], [0, 0]] },
+  }));
+  assert.ok(location);
   closeTo(location.lat, 48 + 51 / 60);
   closeTo(location.lon, 2 + 21 / 60);
 });
@@ -272,11 +286,12 @@ test('onError names the reason for each way a location comes back null', () => {
   }), { onError });
   assert.match(reasons[0], /0°, 0°/);
 
+  // n/0 throughout folds to the same (0, 0) and hits the same check.
   reasons.length = 0;
   parseExifLocation(buildJpeg({
     gps: { latRef: 'N', lat: [[0, 0], [0, 0], [0, 0]], lonRef: 'E', lon: [[0, 0], [0, 0], [0, 0]] },
   }), { onError });
-  assert.match(reasons[0], /unset/);
+  assert.match(reasons[0], /0°, 0°/);
 });
 
 test('onError stays silent when a real position is found', () => {

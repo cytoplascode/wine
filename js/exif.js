@@ -170,7 +170,7 @@ function readGpsFromHeader({ tiff, little, ifd0Entries }, view, onError) {
   const latitude = readDegrees(view, tiff, lat, little, readAsciiChar(view, latRef));
   const longitude = readDegrees(view, tiff, lon, little, readAsciiChar(view, lonRef));
   if (latitude === null || longitude === null) {
-    onError?.('this photo\'s GPS coordinates are marked as unset (an n/0 rational)');
+    onError?.('this photo\'s GPS coordinates are malformed or truncated');
     return null;
   }
 
@@ -190,12 +190,19 @@ function readAsciiChar(view, entry) {
   return String.fromCharCode(view.getUint8(entry.valueOffset));
 }
 
-/** Degrees, minutes, seconds — three RATIONALs — folded to decimal degrees,
- *  negated for the southern and western hemispheres. Null if any of the
- *  three is n/0: EXIF's own convention for "value not available", not zero —
- *  treating it as zero is what silently turned an absent GPS fix into
- *  0°0'0", the other shape "no fix" shows up as on cameras that omit the
- *  denominator instead of the whole tag. */
+/**
+ * Degrees, minutes, seconds — three RATIONALs — folded to decimal degrees,
+ * negated for the southern and western hemispheres.
+ *
+ * An n/0 rational (denominator zero) is EXIF's convention for "value not
+ * available", and it is legitimate for seconds specifically: some encoders
+ * record only degrees and decimal minutes and leave seconds unset rather
+ * than 0/1, since the position is already fully represented without it.
+ * Treating that as 0 — as if the field just weren't there — recovers a real
+ * position instead of discarding it; readGpsFromHeader's exact-(0,0) check
+ * is what still catches a genuinely absent fix, so this does not need to
+ * reject the whole coordinate over one unset part the way it used to.
+ */
 function readDegrees(view, tiffStart, entry, little, ref) {
   if (entry.count < 3) return null;
   const offset = tiffStart + view.getUint32(entry.valueOffset, little);
@@ -204,12 +211,11 @@ function readDegrees(view, tiffStart, entry, little, ref) {
   const part = (i) => {
     const numerator = view.getUint32(offset + i * 8, little);
     const denominator = view.getUint32(offset + i * 8 + 4, little);
-    return denominator ? numerator / denominator : null;
+    return denominator ? numerator / denominator : 0;
   };
   const degrees = part(0);
   const minutes = part(1);
   const seconds = part(2);
-  if (degrees === null || minutes === null || seconds === null) return null;
 
   const decimal = degrees + minutes / 60 + seconds / 3600;
   return ref === 'S' || ref === 'W' ? -decimal : decimal;

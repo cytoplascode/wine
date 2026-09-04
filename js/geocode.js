@@ -1,5 +1,6 @@
-/* Reverse geocoding for the "Place" field: a human-readable name for the
- * coordinates a label photo was taken at. This is the one place the app ever
+/* Reverse geocoding for the "Drink city" and "Drink country" fields: a
+ * human-readable locality for the coordinates a label photo was taken at,
+ * split in two so a Base can filter by either. This is the one place the app ever
  * makes a network request — everything else works fully offline — so any
  * failure here (no connection, the service unreachable, a slow response) is
  * swallowed rather than surfaced: the field just stays blank for the user to
@@ -18,7 +19,10 @@
 const ENDPOINT = 'https://nominatim.openstreetmap.org/reverse';
 const TIMEOUT_MS = 8000;
 
-/** A short place name for `{ lat, lon }`, or null if nothing came back. */
+/**
+ * `{ city, country }` for `{ lat, lon }` — either half may be null when
+ * the geocoder does not know it — or null on any failure at all.
+ */
 export async function reverseGeocode({ lat, lon }) {
   const url = `${ENDPOINT}?format=jsonv2&lat=${lat}&lon=${lon}&zoom=16&addressdetails=1`;
   const controller = new AbortController();
@@ -26,7 +30,7 @@ export async function reverseGeocode({ lat, lon }) {
   try {
     const response = await fetch(url, { signal: controller.signal, headers: { Accept: 'application/json' } });
     if (!response.ok) return null;
-    return placeName(await response.json());
+    return locality(await response.json());
   } catch {
     return null;
   } finally {
@@ -35,20 +39,23 @@ export async function reverseGeocode({ lat, lon }) {
 }
 
 /**
- * Fold a Nominatim reverse-lookup response down to one short, readable
- * string: the town or city, then the country. Points of interest belong to
- * the "Venue" field the app keeps separately — this one stays deliberately
- * broad so it reads the same whichever specific spot within a town the
- * bottle was photographed at.
+ * Split a Nominatim reverse-lookup response into `{ city, country }`. Points
+ * of interest belong in the app's separate "Drink venue" field — the city
+ * kept here stays deliberately broad so it reads the same whichever specific
+ * spot within a town the bottle was photographed at. Falls through
+ * city→town→village→municipality→suburb→state when the finer-grained key is
+ * missing, which is what covers a rural bottle where Nominatim only has a
+ * region name to give.
  *
- * Pure, so it is testable without a network call.
+ * Pure, so it is testable without a network call. Returns null when neither
+ * a city nor a country came back — nothing to fill in — rather than an
+ * object of two nulls.
  */
-export function placeName(data) {
+export function locality(data) {
   if (!data) return null;
   const address = data.address || {};
-  const locality = address.city || address.town || address.village
-    || address.municipality || address.suburb || address.state;
-
-  const parts = [locality, address.country].filter(Boolean);
-  return parts.join(', ') || null;
+  const city = address.city || address.town || address.village
+    || address.municipality || address.suburb || address.state || null;
+  const country = address.country || null;
+  return (city || country) ? { city, country } : null;
 }

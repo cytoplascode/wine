@@ -66,14 +66,18 @@ export const WINE_FIELDS = [
   // is the only thing that may move.
   { key: 'Drink date', emit: 'bare', group: 'main', type: 'date', auto: true },
 
-  // Where the label photo was taken: coordinates from the phone (EXIF on a
-  // gallery import, live GPS for an in-app shutter capture, since a canvas
-  // capture carries no EXIF of its own to read back), a best-effort place
-  // name from reverse-geocoding those coordinates, and a free-text field for
-  // a venue the geocoder cannot know — "Bistro du Chef" isn't in any map data.
-  { key: 'Coordinates', emit: 'quoted', group: 'main', type: 'text', auto: true },
-  { key: 'Place', emit: 'quoted', group: 'main', type: 'text', auto: true },
-  { key: 'Venue', emit: 'quoted', group: 'main', type: 'text' },
+  // Where the label photo was taken. All four keys parallel "Drink date":
+  // Drink coordinates come from the phone (EXIF on a gallery import, live
+  // GPS for an in-app shutter capture, since a canvas capture carries no
+  // EXIF of its own to read back); Drink city and Drink country are the two
+  // halves of the reverse-geocoded locality, kept separate so a Base can
+  // filter by either without splitting a string; Drink venue is a user-typed
+  // field for a specific spot the geocoder cannot know — "Bistro du Chef"
+  // isn't in any map data.
+  { key: 'Drink coordinates', emit: 'quoted', group: 'main', type: 'text', auto: true },
+  { key: 'Drink city', emit: 'quoted', group: 'main', type: 'text', auto: true },
+  { key: 'Drink country', emit: 'quoted', group: 'main', type: 'text', auto: true },
+  { key: 'Drink venue', emit: 'quoted', group: 'main', type: 'text' },
 ];
 
 /** Fields the user can actually type into, in template order. */

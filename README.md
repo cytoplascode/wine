@@ -13,7 +13,7 @@ straight into a folder you choose.
 ## The note it writes
 
 Output matches the `fileClass: Wine` template used in the vault this was built for — same
-keys, same order, same spelling (`Appelation`), same defaults — plus three keys of its own for
+keys, same order, same spelling (`Appelation`), same defaults — plus four keys of its own for
 where the label was photographed, appended at the end so nothing already there moves. Those
 three are new to *this app*; they will not mean anything to your vault's own `Wine` fileClass
 until you add matching properties there too (Obsidian doesn't require it — an unrecognised key
@@ -45,9 +45,10 @@ Inventory: 0
 Buy: 0
 Buy date:
 Drink date:
-Coordinates:
-Place:
-Venue:
+Drink coordinates:
+Drink city:
+Drink country:
+Drink venue:
 ---
 
 ## Tasting note
@@ -83,31 +84,34 @@ gets Obsidian's own ` 2`, ` 3` suffix rather than overwriting anything.
 
 ## Where it was taken
 
-Three fields, filled in on the review screen exactly like the OCR guesses — visibly a guess
-until you edit one, then it's yours:
+Four fields, all prefixed `Drink `- to parallel `Drink date` and to sit clearly apart from the
+wine's own `Country`. The first three are filled in on the review screen exactly like the OCR
+guesses — visibly a guess until you edit one, then it's yours; the last is always yours to type:
 
-- **Coordinates** — where the photo was taken, as plain decimal degrees. A photo taken with the
-  in-app shutter reads the phone's live GPS position at the moment you tap it (Chrome will ask
-  for location permission the first time); a photo imported from the **Gallery** instead reads
-  the position out of the photo's own EXIF data, if your camera app recorded one. Those are
-  different sources on purpose: a shutter photo is drawn through a `<canvas>` on its way to a
-  bitmap, which strips every bit of EXIF the original had — there is nothing left in it to read
-  back. Only the label photo is asked for either way; the food photo shares the same moment and
-  place, so nothing new is read for it.
-- **Place** — a short, human-readable guess at the same coordinates — "Bistro du Chef, Paris,
-  France", say — filled in a moment after Coordinates, once a reverse-geocoding lookup against
-  [Nominatim](https://nominatim.openstreetmap.org) (OpenStreetMap's free, keyless geocoder)
-  returns. This is the one request this app ever makes over the network; everything else runs
-  entirely on the device. No connection, a slow one, or the lookup simply not finding anything
-  all fail the same way — quietly, leaving the field blank for you to fill in by hand — never
-  something to notice or work around.
-- **Venue** — a plain text field, never filled in for you. Nominatim's guess is usually a
-  street or a neighbourhood, not "the specific restaurant" — if that's what you want on the
-  note, this is where to type it.
+- **Drink coordinates** — decimal degrees. A photo taken with the in-app shutter reads the
+  phone's live GPS position at the moment you tap it (Chrome will ask for location permission
+  the first time); a photo imported from the **Gallery** instead reads the position out of the
+  photo's own EXIF data, if your camera app recorded one. Those are different sources on
+  purpose: a shutter photo is drawn through a `<canvas>` on its way to a bitmap, which strips
+  every bit of EXIF the original had — there is nothing left in it to read back. Only the label
+  photo is asked for either way; the food photo shares the same moment and place, so nothing
+  new is read for it.
+- **Drink city** and **Drink country** — the two halves of a reverse-geocoded locality, kept
+  separate so a Base can filter by either without splitting a string. Filled in a moment after
+  Drink coordinates, from a single lookup against
+  [Nominatim](https://nominatim.openstreetmap.org) (OpenStreetMap's free, keyless geocoder).
+  Drink city is deliberately broad ("Paris", "Meursault", not a street), so it reads the same
+  whichever specific spot within a town the bottle was photographed at. This is the one request
+  this app ever makes over the network; everything else runs entirely on the device. No
+  connection, a slow one, or the lookup simply not finding anything all fail the same way —
+  quietly, leaving both fields blank for you to fill in by hand.
+- **Drink venue** — a plain text field, never filled in for you. Nominatim can name a
+  neighbourhood but not "the specific restaurant" — if that's what you want on the note, this
+  is where to type it.
 
-Skip a shutter photo's location prompt (or just deny it) and Coordinates stays blank, same as a
-Gallery import with no GPS in its EXIF — Place and Venue are unaffected either way, and nothing
-about saving the note changes.
+Skip a shutter photo's location prompt (or just deny it) and Drink coordinates stays blank,
+same as a Gallery import with no GPS in its EXIF — every other Drink field is unaffected either
+way, and nothing about saving the note changes.
 
 ## Requirements
 

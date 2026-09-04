@@ -8,7 +8,8 @@ export const state = {
   labelBitmap: null,   // ImageBitmap straight from camera or gallery
   labelDate: null,     // when that photo was taken — today, or its EXIF date
   labelLocation: null, // { lat, lon } where it was taken — live GPS or EXIF
-  labelPlace: null,    // human-readable place name for those coordinates
+  labelCity: null,     // reverse-geocoded city (or town/village/…) for those coordinates
+  labelCountry: null,  // reverse-geocoded country
   cropPoints: null,    // the crop handles, in source-image pixels
   flattened: null,     // { canvas, blob } after perspective correction
   foodBlob: null,
@@ -22,7 +23,8 @@ export function resetCapture() {
   state.labelBitmap = null;
   state.labelDate = null;
   state.labelLocation = null;
-  state.labelPlace = null;
+  state.labelCity = null;
+  state.labelCountry = null;
   state.cropPoints = null;
   state.flattened = null;
   state.foodBlob = null;

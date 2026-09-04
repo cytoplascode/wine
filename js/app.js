@@ -107,19 +107,22 @@ function withCaptureDate(record) {
 }
 const captureDateAuto = () => (state.labelDate ? ['Drink date'] : []);
 
-/** Merge in the label photo's coordinates and resolved place — guesses, marked
- *  AUTO. Both survive an OCR-completion setValues() by riding in on every one,
- *  which is what stops a slow place lookup that landed before OCR finished
- *  from being wiped a second later by the setValues that ships the OCR guesses. */
+/** Merge in the label photo's coordinates and reverse-geocoded city/country
+ *  — guesses, marked AUTO. All three survive an OCR-completion setValues()
+ *  by riding in on every one, which is what stops a slow lookup that landed
+ *  before OCR finished from being wiped a second later by the setValues that
+ *  ships the OCR guesses. Drink venue is user-typed and stays out of this. */
 function withLocation(record) {
   const extras = {};
-  if (state.labelLocation) extras.Coordinates = formatCoordinates(state.labelLocation);
-  if (state.labelPlace) extras.Place = state.labelPlace;
+  if (state.labelLocation) extras['Drink coordinates'] = formatCoordinates(state.labelLocation);
+  if (state.labelCity) extras['Drink city'] = state.labelCity;
+  if (state.labelCountry) extras['Drink country'] = state.labelCountry;
   return Object.keys(extras).length ? { ...record, ...extras } : record;
 }
 const locationAuto = () => [
-  ...(state.labelLocation ? ['Coordinates'] : []),
-  ...(state.labelPlace ? ['Place'] : []),
+  ...(state.labelLocation ? ['Drink coordinates'] : []),
+  ...(state.labelCity ? ['Drink city'] : []),
+  ...(state.labelCountry ? ['Drink country'] : []),
 ];
 
 function formatCoordinates({ lat, lon }) {
@@ -130,30 +133,32 @@ const withAutoContext = (record) => withLocation(withCaptureDate(record));
 const autoContextKeys = () => [...captureDateAuto(), ...locationAuto()];
 
 /**
- * A best-effort place name for the label's coordinates, filled in once it
- * resolves rather than blocking review on a network round trip. Guarded
+ * A best-effort city and country for the label's coordinates, filled in once
+ * they resolve rather than blocking review on a network round trip. Guarded
  * against a fetch that is still in flight when the user moves on to a
  * different bottle — state.labelLocation is a fresh object per capture, so a
  * reference check catches a result that would otherwise land on the wrong
  * one.
  */
-async function resolvePlace() {
+async function resolveDrinkLocation() {
   const location = state.labelLocation;
   if (!location) return;
-  const place = await reverseGeocode(location);
-  if (!place || state.labelLocation !== location) return;
+  const result = await reverseGeocode(location);
+  if (!result || state.labelLocation !== location) return;
   // Kept in state so a subsequent setValues (the one that ships OCR guesses)
-  // re-applies it via withAutoContext — patchIfEmpty alone would fill the
+  // re-applies them via withAutoContext — patchIfEmpty alone would fill each
   // field once and then have it wiped by the next full setValues.
-  state.labelPlace = place;
-  patchIfEmpty('Place', place);
+  state.labelCity = result.city;
+  state.labelCountry = result.country;
+  if (result.city) patchIfEmpty('Drink city', result.city);
+  if (result.country) patchIfEmpty('Drink country', result.country);
 }
 
 async function runOcr() {
   if (!state.flattened || state.ocrText) return;
 
   setValues(withAutoContext(emptyRecord()), autoContextKeys());
-  resolvePlace();
+  resolveDrinkLocation();
   $('#raw-text').textContent = '';
   showOcrProgress(0, 'Starting the recognition engine…');
   try {

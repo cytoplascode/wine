@@ -36,16 +36,19 @@ export async function reverseGeocode({ lat, lon }) {
 
 /**
  * Fold a Nominatim reverse-lookup response down to one short, readable
- * string: a named point of interest if there is one, then the town or city,
- * then the country — skipping any part that duplicates one already used.
+ * string: the town or city, then the country. Points of interest belong to
+ * the "Venue" field the app keeps separately — this one stays deliberately
+ * broad so it reads the same whichever specific spot within a town the
+ * bottle was photographed at.
+ *
  * Pure, so it is testable without a network call.
  */
 export function placeName(data) {
   if (!data) return null;
   const address = data.address || {};
-  const specific = data.name || address.amenity || address.shop || address.tourism || address.building;
-  const locality = address.city || address.town || address.village || address.municipality || address.suburb;
+  const locality = address.city || address.town || address.village
+    || address.municipality || address.suburb || address.state;
 
-  const parts = [...new Set([specific, locality || address.state, address.country].filter(Boolean))];
-  return parts.join(', ') || data.display_name || null;
+  const parts = [locality, address.country].filter(Boolean);
+  return parts.join(', ') || null;
 }

@@ -107,11 +107,20 @@ function withCaptureDate(record) {
 }
 const captureDateAuto = () => (state.labelDate ? ['Drink date'] : []);
 
-/** Merge in the label photo's coordinates the same way — a guess, marked AUTO. */
+/** Merge in the label photo's coordinates and resolved place — guesses, marked
+ *  AUTO. Both survive an OCR-completion setValues() by riding in on every one,
+ *  which is what stops a slow place lookup that landed before OCR finished
+ *  from being wiped a second later by the setValues that ships the OCR guesses. */
 function withLocation(record) {
-  return state.labelLocation ? { ...record, Coordinates: formatCoordinates(state.labelLocation) } : record;
+  const extras = {};
+  if (state.labelLocation) extras.Coordinates = formatCoordinates(state.labelLocation);
+  if (state.labelPlace) extras.Place = state.labelPlace;
+  return Object.keys(extras).length ? { ...record, ...extras } : record;
 }
-const locationAuto = () => (state.labelLocation ? ['Coordinates'] : []);
+const locationAuto = () => [
+  ...(state.labelLocation ? ['Coordinates'] : []),
+  ...(state.labelPlace ? ['Place'] : []),
+];
 
 function formatCoordinates({ lat, lon }) {
   return `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
@@ -132,7 +141,12 @@ async function resolvePlace() {
   const location = state.labelLocation;
   if (!location) return;
   const place = await reverseGeocode(location);
-  if (place && state.labelLocation === location) patchIfEmpty('Place', place);
+  if (!place || state.labelLocation !== location) return;
+  // Kept in state so a subsequent setValues (the one that ships OCR guesses)
+  // re-applies it via withAutoContext — patchIfEmpty alone would fill the
+  // field once and then have it wiped by the next full setValues.
+  state.labelPlace = place;
+  patchIfEmpty('Place', place);
 }
 
 async function runOcr() {

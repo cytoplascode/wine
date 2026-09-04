@@ -104,7 +104,14 @@ async function importFromGallery(event) {
     const [bitmap, capturedOn, location] = await Promise.all([
       createImageBitmap(file, { imageOrientation: 'from-image' }),
       readCaptureDate(file),
-      mode === 'food' ? null : readCaptureLocation(file),
+      // TEMPORARY: onError surfaces exactly why a photo's GPS wasn't read —
+      // no EXIF, no GPS tags, or found but rejected as unset/zeroed — to
+      // track down a report of real GPS data (confirmed in Google Photos)
+      // not making it through. Remove alongside the equivalent in app.js's
+      // resolvePlace() once that's diagnosed; a normal miss should stay quiet.
+      mode === 'food' ? null : readCaptureLocation(file, {
+        onError: (reason) => toast(`Photo's location wasn't read: ${reason}`, 6000),
+      }),
     ]);
     onPhoto(bitmap, mode, capturedOn || localIsoDate(), location);
   } catch (err) {

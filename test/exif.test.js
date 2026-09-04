@@ -252,6 +252,39 @@ test('a JPEG with no EXIF at all returns null for location too', () => {
   assert.equal(parseExifLocation(bytes.buffer), null);
 });
 
+/* ── onError: temporary diagnostics for a report of real GPS data
+ *    (confirmed present in Google Photos) not making it through. ── */
+
+test('onError names the reason for each way a location comes back null', () => {
+  const reasons = [];
+  const onError = (reason) => reasons.push(reason);
+
+  parseExifLocation(new Uint8Array([0xff, 0xd8, 0xff, 0xdb, 0x00, 0x02, 0xff, 0xd9]).buffer, { onError });
+  assert.match(reasons[0], /no EXIF data/);
+
+  reasons.length = 0;
+  parseExifLocation(buildJpeg({ dateTimeOriginal: '2024:03:15' }), { onError });
+  assert.match(reasons[0], /no GPS tags/);
+
+  reasons.length = 0;
+  parseExifLocation(buildJpeg({
+    gps: { latRef: 'N', lat: [[0, 1], [0, 1], [0, 1]], lonRef: 'E', lon: [[0, 1], [0, 1], [0, 1]] },
+  }), { onError });
+  assert.match(reasons[0], /0°, 0°/);
+
+  reasons.length = 0;
+  parseExifLocation(buildJpeg({
+    gps: { latRef: 'N', lat: [[0, 0], [0, 0], [0, 0]], lonRef: 'E', lon: [[0, 0], [0, 0], [0, 0]] },
+  }), { onError });
+  assert.match(reasons[0], /unset/);
+});
+
+test('onError stays silent when a real position is found', () => {
+  let called = false;
+  parseExifLocation(buildJpeg({ gps: PARIS }), { onError: () => { called = true; } });
+  assert.equal(called, false);
+});
+
 test('localIsoDate reports the calendar date, not the UTC one', () => {
   // A time chosen so a UTC-based formatter (toISOString) would report the
   // wrong day in any timezone west of UTC — the bug this function exists to

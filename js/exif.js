@@ -33,23 +33,36 @@ export function localIsoDate(date = new Date()) {
   return `${y}-${m}-${d}`;
 }
 
+// A JPEG's EXIF (APP1) segment tops out around 64 KB — the length field
+// that bounds it is 16-bit — but that budget is shared with anything else
+// crammed into the same or an earlier APP1: an embedded thumbnail via IFD1,
+// a separate XMP block ahead of it (Google Photos in particular writes a
+// substantial one for Motion Photo metadata). Stacked up, those can push
+// the GPS IFD's actual coordinate bytes well past where a tighter cap here
+// used to cut the read off — which read as "no GPS tags" even on a photo
+// that genuinely has them. 1 MB comfortably covers a worst-case multi-segment
+// header while still being a sliver of a multi-megabyte photo.
+const HEADER_BYTES = 1024 * 1024;
+
 /** `YYYY-MM-DD` from a photo File's EXIF data, or null. */
 export async function readCaptureDate(file) {
   try {
-    // The header EXIF lives in sits within the first few dozen KB of a JPEG;
-    // capping the read keeps this cheap even on a multi-megabyte photo.
-    const buffer = await file.slice(0, 128 * 1024).arrayBuffer();
+    const buffer = await file.slice(0, HEADER_BYTES).arrayBuffer();
     return parseExifDate(buffer);
   } catch {
     return null;
   }
 }
 
-/** `{ lat, lon }` in decimal degrees from a photo File's EXIF GPS tags, or null. */
-export async function readCaptureLocation(file) {
+/**
+ * `{ lat, lon }` in decimal degrees from a photo File's EXIF GPS tags, or
+ * null. `onError`, when given, hears why whenever it comes back null instead
+ * of a position — see parseExifLocation.
+ */
+export async function readCaptureLocation(file, options) {
   try {
-    const buffer = await file.slice(0, 128 * 1024).arrayBuffer();
-    return parseExifLocation(buffer);
+    const buffer = await file.slice(0, HEADER_BYTES).arrayBuffer();
+    return parseExifLocation(buffer, options);
   } catch {
     return null;
   }
@@ -60,9 +73,22 @@ export function parseExifDate(buffer) {
   return walkApp1(buffer, readApp1Date);
 }
 
-/** Pure and synchronous, mirroring parseExifDate. */
-export function parseExifLocation(buffer) {
-  return walkApp1(buffer, readApp1Location);
+/**
+ * Pure and synchronous, mirroring parseExifDate. `onError`, when given,
+ * hears why this came back null instead of a position — nothing calls it
+ * today; it exists for temporarily wiring up a diagnostic without changing
+ * what a normal failure does (see readCaptureLocation).
+ */
+export function parseExifLocation(buffer, { onError } = {}) {
+  let sawExifHeader = false;
+  const result = walkApp1(buffer, (view, start) => {
+    const header = readTiffHeader(view, start);
+    if (!header) return null;   // not this APP1 segment's problem to report — try the next one
+    sawExifHeader = true;
+    return readGpsFromHeader(header, view, onError);
+  });
+  if (!result && !sawExifHeader) onError?.('no EXIF data was found in this photo at all');
+  return result;
 }
 
 /**
@@ -123,13 +149,12 @@ function readApp1Date(view, start) {
   return fallback ? toIsoDate(readAscii(view, tiff, fallback, little)) : null;
 }
 
-function readApp1Location(view, start) {
-  const header = readTiffHeader(view, start);
-  if (!header) return null;
-  const { tiff, little, ifd0Entries } = header;
-
+function readGpsFromHeader({ tiff, little, ifd0Entries }, view, onError) {
   const gpsPointer = ifd0Entries.get(GPS_IFD);
-  if (!gpsPointer) return null;
+  if (!gpsPointer) {
+    onError?.('this photo\'s EXIF has no GPS tags at all');
+    return null;
+  }
   const gpsIfd = tiff + view.getUint32(gpsPointer.valueOffset, little);
   const gpsEntries = readIFD(view, gpsIfd, little);
 
@@ -137,16 +162,25 @@ function readApp1Location(view, start) {
   const lat = gpsEntries.get(GPS_LAT);
   const lonRef = gpsEntries.get(GPS_LON_REF);
   const lon = gpsEntries.get(GPS_LON);
-  if (!latRef || !lat || !lonRef || !lon) return null;
+  if (!latRef || !lat || !lonRef || !lon) {
+    onError?.('this photo\'s GPS tags are incomplete');
+    return null;
+  }
 
   const latitude = readDegrees(view, tiff, lat, little, readAsciiChar(view, latRef));
   const longitude = readDegrees(view, tiff, lon, little, readAsciiChar(view, lonRef));
-  if (latitude === null || longitude === null) return null;
+  if (latitude === null || longitude === null) {
+    onError?.('this photo\'s GPS coordinates are marked as unset (an n/0 rational)');
+    return null;
+  }
 
   // Some cameras write a structurally complete but zeroed-out GPS IFD as
   // their placeholder for "no fix was acquired" rather than omitting the
   // tags altogether — this is Null Island, not a real bottle of wine.
-  if (latitude === 0 && longitude === 0) return null;
+  if (latitude === 0 && longitude === 0) {
+    onError?.('this photo\'s GPS coordinates are exactly 0°, 0° — treated as no fix');
+    return null;
+  }
 
   return { lat: latitude, lon: longitude };
 }

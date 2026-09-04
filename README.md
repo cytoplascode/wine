@@ -5,8 +5,7 @@ entirely on the device, with one narrow exception: a best-effort lookup of the p
 where the label photo was taken, the only thing here that ever touches the network (see
 [Where it was taken](#where-it-was-taken)).
 
-Photograph the label (or pick a photo from your gallery), adjust the auto-framed handles if
-the guess missed, and
+Photograph the label (or pick a photo from your gallery), drag the handles onto its edges, and
 the app unwraps the label off the curve of the bottle, reads the text with Tesseract running
 locally, guesses the fields, and lets you correct them before writing the note and its images
 straight into a folder you choose.
@@ -233,8 +232,7 @@ little harder than one without.
    nothing needs the network again.
 3. **Connect vault** — pick your vault folder, or a subfolder of it. The choice is remembered.
 4. **New bottle** → photograph the label, or tap **Gallery** to use a picture you already took.
-5. Adjust the handles if the auto-frame missed (see below), set **Curve** by the preview,
-   then **Read label**.
+5. Drag the handles onto the label, set **Curve** by the preview, then **Read label**.
 6. Correct anything OCR got wrong, fill in price or rating if you like, optionally add a food
    photo, then **Save to vault**.
 
@@ -247,21 +245,6 @@ fix. **Save to vault** floats over the bottom of the screen the same way, so the
 keeps the space either would otherwise hold onto. The phone's back button steps back through
 the flow throughout — review to crop, crop to the camera, camera to home — and only leaves
 the app from the home screen.
-
-### Auto-frame
-
-The six handles arrive already sitting on the label when the crop screen opens, not at a
-default inset from the photo's edges — one less thing to drag on every scan. It works by
-spotting the light-coloured paper against the darker glass: Otsu's threshold splits the photo
-into a bright and a dark half, connected components find every bright blob, and the one that
-best fits label-shape filters (a plausible fraction of the image, a plausible aspect, roughly
-solid, near the centre) is picked and its bounding box seeds the handles. Best-effort — a
-photo where the label is not the dominant bright thing (blown-out background, a brighter
-tablecloth, multiple bottles) falls silently back to the centred inset, and the user drags
-the handles as before. Ships alongside the classical approach because that is what wine
-labels actually respond to (colour-contrast between paper and glass is a strong, reliable
-signal); a small pretrained ML model would cost several more MB to download and would not do
-noticeably better on this problem.
 
 ### The curve slider
 
@@ -352,7 +335,7 @@ permission prompt avoids the question.
 No build step and no runtime dependencies — it is plain ES modules served as files.
 
 ```sh
-npm test          # warp/unwrap, parser, note writer, vault states, languages, routing, EXIF, geocoding, auto-frame
+npm test          # warp and unwrap, parser, note writer, vault states, languages, routing, EXIF, geocoding
 npm run serve     # http://localhost:8000
 ```
 
@@ -360,7 +343,7 @@ Camera capture and the directory picker need a secure context, so `localhost` wo
 LAN IP does not.
 
 The pure modules — `warp.js`, `parse.js`, `note.js`, `languages.js`, `nav.js`, `exif.js`,
-`geocode.js`, `detect.js` and the vault state machine — carry the tests. `nav.js` holds the screen stack
+`geocode.js` and the vault state machine — carry the tests. `nav.js` holds the screen stack
 behind the back button and returns a plan rather than touching the History API, which is what
 makes its awkward cases — returning to a screen already visited, a back press landing outside
 the stack — testable at all. `exif.js` parses the JPEG/TIFF byte layout directly rather than
@@ -368,12 +351,9 @@ going through `file.arrayBuffer()`, so its tests build a real EXIF segment byte 
 of shipping a binary fixture — the GPS IFD included, since a hand-rolled TIFF is the only way to
 be sure the rational-to-decimal conversion is exercised against real bytes rather than restated
 in the test. `geocode.js` splits the actual `fetch()` (untestable here, and unreachable through
-this project's own sandboxed network besides) from `locality()`, the pure split of a
-Nominatim response into `{ city, country }` — that half is what `geocode.test.js` covers, with
-response shapes lifted from Nominatim's documented reply format. `detect.js` splits the same
-way: `detectLabel()` needs a `<canvas>` to reach the pixels, but everything downstream of
-that — Otsu's threshold, the connected-components pass, the label-shape scoring — is pure and
-takes plain typed arrays, which is what `detect.test.js` exercises directly. `note.test.js` asserts a
+this project's own sandboxed network besides) from `placeName()`, the pure formatting of a
+Nominatim response into one short string — that half is what `geocode.test.js` covers, with
+response shapes lifted from Nominatim's documented reply format. `note.test.js` asserts a
 generated note against the vault template byte for byte, which is what stops the frontmatter
 drifting; `cylinder.test.js` photographs a test image onto a modelled bottle using real pinhole
 geometry, then checks the unwrap gets it back — deliberately different maths from the one the

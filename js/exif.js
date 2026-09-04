@@ -54,15 +54,11 @@ export async function readCaptureDate(file) {
   }
 }
 
-/**
- * `{ lat, lon }` in decimal degrees from a photo File's EXIF GPS tags, or
- * null. `onError`, when given, hears why whenever it comes back null instead
- * of a position — see parseExifLocation.
- */
-export async function readCaptureLocation(file, options) {
+/** `{ lat, lon }` in decimal degrees from a photo File's EXIF GPS tags, or null. */
+export async function readCaptureLocation(file) {
   try {
     const buffer = await file.slice(0, HEADER_BYTES).arrayBuffer();
-    return parseExifLocation(buffer, options);
+    return parseExifLocation(buffer);
   } catch {
     return null;
   }
@@ -73,22 +69,12 @@ export function parseExifDate(buffer) {
   return walkApp1(buffer, readApp1Date);
 }
 
-/**
- * Pure and synchronous, mirroring parseExifDate. `onError`, when given,
- * hears why this came back null instead of a position — nothing calls it
- * today; it exists for temporarily wiring up a diagnostic without changing
- * what a normal failure does (see readCaptureLocation).
- */
-export function parseExifLocation(buffer, { onError } = {}) {
-  let sawExifHeader = false;
-  const result = walkApp1(buffer, (view, start) => {
+/** Pure and synchronous, mirroring parseExifDate. */
+export function parseExifLocation(buffer) {
+  return walkApp1(buffer, (view, start) => {
     const header = readTiffHeader(view, start);
-    if (!header) return null;   // not this APP1 segment's problem to report — try the next one
-    sawExifHeader = true;
-    return readGpsFromHeader(header, view, onError);
+    return header ? readGpsFromHeader(header, view) : null;
   });
-  if (!result && !sawExifHeader) onError?.('no EXIF data was found in this photo at all');
-  return result;
 }
 
 /**
@@ -149,12 +135,9 @@ function readApp1Date(view, start) {
   return fallback ? toIsoDate(readAscii(view, tiff, fallback, little)) : null;
 }
 
-function readGpsFromHeader({ tiff, little, ifd0Entries }, view, onError) {
+function readGpsFromHeader({ tiff, little, ifd0Entries }, view) {
   const gpsPointer = ifd0Entries.get(GPS_IFD);
-  if (!gpsPointer) {
-    onError?.('this photo\'s EXIF has no GPS tags at all');
-    return null;
-  }
+  if (!gpsPointer) return null;
   const gpsIfd = tiff + view.getUint32(gpsPointer.valueOffset, little);
   const gpsEntries = readIFD(view, gpsIfd, little);
 
@@ -162,25 +145,17 @@ function readGpsFromHeader({ tiff, little, ifd0Entries }, view, onError) {
   const lat = gpsEntries.get(GPS_LAT);
   const lonRef = gpsEntries.get(GPS_LON_REF);
   const lon = gpsEntries.get(GPS_LON);
-  if (!latRef || !lat || !lonRef || !lon) {
-    onError?.('this photo\'s GPS tags are incomplete');
-    return null;
-  }
+  if (!latRef || !lat || !lonRef || !lon) return null;
 
   const latitude = readDegrees(view, tiff, lat, little, readAsciiChar(view, latRef));
   const longitude = readDegrees(view, tiff, lon, little, readAsciiChar(view, lonRef));
-  if (latitude === null || longitude === null) {
-    onError?.('this photo\'s GPS coordinates are malformed or truncated');
-    return null;
-  }
+  if (latitude === null || longitude === null) return null;
 
-  // Some cameras write a structurally complete but zeroed-out GPS IFD as
-  // their placeholder for "no fix was acquired" rather than omitting the
-  // tags altogether — this is Null Island, not a real bottle of wine.
-  if (latitude === 0 && longitude === 0) {
-    onError?.('this photo\'s GPS coordinates are exactly 0°, 0° — treated as no fix');
-    return null;
-  }
+  // Some cameras write a structurally complete but zeroed-out (or entirely
+  // unset, n/0) GPS IFD as their placeholder for "no fix was acquired"
+  // rather than omitting the tags altogether — this is Null Island, not a
+  // real bottle of wine.
+  if (latitude === 0 && longitude === 0) return null;
 
   return { lat: latitude, lon: longitude };
 }

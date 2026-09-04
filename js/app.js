@@ -127,18 +127,11 @@ const autoContextKeys = () => [...captureDateAuto(), ...locationAuto()];
  * different bottle — state.labelLocation is a fresh object per capture, so a
  * reference check catches a result that would otherwise land on the wrong
  * one.
- *
- * TEMPORARY: reports a failure with a toast instead of the usual silent
- * null, to track down why Place isn't filling in on a real phone. Remove the
- * onError once that's diagnosed — a network hiccup on every other field in
- * this app fails quietly, and Place should too.
  */
 async function resolvePlace() {
   const location = state.labelLocation;
   if (!location) return;
-  const place = await reverseGeocode(location, {
-    onError: (reason) => toast(`Could not look up the place name: ${reason}`, 6000),
-  });
+  const place = await reverseGeocode(location);
   if (place && state.labelLocation === location) patchIfEmpty('Place', place);
 }
 

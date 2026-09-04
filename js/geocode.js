@@ -18,27 +18,16 @@
 const ENDPOINT = 'https://nominatim.openstreetmap.org/reverse';
 const TIMEOUT_MS = 8000;
 
-/**
- * A short place name for `{ lat, lon }`, or null if nothing came back.
- * `onError`, when given, hears why — a status code, "timed out", or a
- * network error's own message — for a caller that wants to surface a
- * failure rather than just accept the quiet null. Nothing calls it today;
- * it exists for temporarily wiring up a diagnostic without changing what a
- * normal failure does.
- */
-export async function reverseGeocode({ lat, lon }, { onError } = {}) {
+/** A short place name for `{ lat, lon }`, or null if nothing came back. */
+export async function reverseGeocode({ lat, lon }) {
   const url = `${ENDPOINT}?format=jsonv2&lat=${lat}&lon=${lon}&zoom=16&addressdetails=1`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
     const response = await fetch(url, { signal: controller.signal, headers: { Accept: 'application/json' } });
-    if (!response.ok) {
-      onError?.(`the server said ${response.status}`);
-      return null;
-    }
+    if (!response.ok) return null;
     return placeName(await response.json());
-  } catch (err) {
-    onError?.(err.name === 'AbortError' ? 'it timed out' : err.message || String(err));
+  } catch {
     return null;
   } finally {
     clearTimeout(timer);

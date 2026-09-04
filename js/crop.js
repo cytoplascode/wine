@@ -11,6 +11,7 @@ import { $, canvasToBlob } from './ui.js';
 import {
   cylinderSize, warpCylinder, edgeArc, MAX_SIDE, DEFAULT_WRAP,
 } from './warp.js';
+import { detectLabel } from './detect.js';
 
 const HANDLE_RADIUS = 13;   // CSS px — drawn size
 const GRAB_RADIUS = 30;     // CSS px — touch target, comfortably past a fingertip
@@ -60,7 +61,10 @@ export function initCrop() {
 export function showImage(nextBitmap, saved) {
   bitmap = nextBitmap;
   if (!bitmap) return;
-  points = saved || defaultPoints();
+  // Prefer whatever the user had if they came back to re-crop, then try to
+  // find the label automatically, then fall back to the centred inset —
+  // best-to-worst starting point without ever making the user wait.
+  points = saved || autoDetectedPoints() || defaultPoints();
   buildPreviewSource();
   layout();
   draw();
@@ -78,8 +82,29 @@ function defaultPoints() {
   const x1 = bitmap.width * (1 - INSET);
   const y0 = bitmap.height * INSET;
   const y1 = bitmap.height * (1 - INSET);
+  return sixHandles(x0, y0, x1, y1);
+}
+
+/** Seed the handles from a detected label bounding box, or null if the
+ *  detector had nothing plausible to hand back. Same default curve as the
+ *  centred fallback — the middle handles are still there to be dragged. */
+function autoDetectedPoints() {
+  try {
+    const box = detectLabel(bitmap);
+    if (!box) return null;
+    return sixHandles(box.left, box.top, box.right, box.bottom);
+  } catch {
+    // A missing canvas API or an unreadable bitmap should never break the
+    // crop screen — just let the centred default take over instead.
+    return null;
+  }
+}
+
+/** Six handles for a rectangle whose top and bottom edges bow out with the
+ *  same default curve. TL, TM, TR, BR, BM, BL. */
+function sixHandles(x0, y0, x1, y1) {
   const mx = (x0 + x1) / 2;
-  const bulge = bitmap.height * BULGE;
+  const bulge = (y1 - y0) * BULGE;
   return [
     { x: x0, y: y0 },            // A  top-left
     { x: mx, y: y0 - bulge },    // B  top-middle, bowed up

@@ -9,11 +9,10 @@ test('an unconnected vault offers to connect', () => {
   assert.deepEqual(card.button, ['Connect vault', 'pick']);
 });
 
-test('a working vault is named and shows where notes go', () => {
+test('a working vault is named', () => {
   const card = describe('granted', 'MyVault');
   assert.equal(card.dot, 'ok');
   assert.match(card.text, /MyVault/);
-  assert.match(card.text, /wines folder/);
   assert.deepEqual(card.button, ['Change vault', 'pick']);
 });
 

@@ -13,7 +13,7 @@ import { emptyRecord } from './schema.js';
 import { parseLabel } from './parse.js';
 import * as vault from './vault.js';
 import * as quickadd from './quickadd.js';
-import { getMode, setMode } from './connection.js';
+import { getMode, setMode, getFolders, setFolders } from './connection.js';
 import { readValues } from './form.js';
 import { save, PermissionNeeded } from './save.js';
 import {
@@ -359,7 +359,27 @@ modeButton.addEventListener('click', () => {
   renderVaultCard();
 });
 
-onEnter('home', renderVaultCard);
+/* ── Folders ────────────────────────────────────────────────────────── */
+
+const notesFolderInput = $('#notes-folder');
+const attachmentsFolderInput = $('#attachments-folder');
+
+function renderFoldersCard() {
+  const folders = getFolders();
+  notesFolderInput.value = folders.notes;
+  attachmentsFolderInput.value = folders.attachments;
+}
+
+$('#btn-save-folders').addEventListener('click', () => {
+  const saved = setFolders({
+    notes: notesFolderInput.value,
+    attachments: attachmentsFolderInput.value,
+  });
+  renderFoldersCard();
+  toast(`Saved. Notes go to “${saved.notes}”, photos to “${saved.attachments}”.`);
+});
+
+onEnter('home', () => { renderVaultCard(); renderFoldersCard(); });
 
 /* ── Offline OCR status ─────────────────────────────────────────────── */
 

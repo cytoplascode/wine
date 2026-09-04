@@ -134,6 +134,29 @@ test('a $ in the wine name is not read as a replacement group', async () => {
   assert.equal(written[1][2], 'Label:: ![[A $& B 2.jpg]]');
 });
 
+test('notes and photos in different, nested folders each get created', async () => {
+  const written = await unpack({
+    v: 1,
+    note: {
+      path: 'Wine/Bottles/Château Ausone - 2015.md',
+      content: 'Label:: ![[Château Ausone - 2015.jpg]]',
+    },
+    files: [{ path: 'Wine/Bottles/attachments/Château Ausone - 2015.jpg', data: jpeg(5) }],
+  });
+  assert.deepEqual(written.map((w) => [w[0], w[1]]), [
+    ['folder', 'Wine'],
+    ['folder', 'Wine/Bottles'],
+    ['folder', 'Wine/Bottles/attachments'],
+    ['binary', 'Wine/Bottles/attachments/Château Ausone - 2015.jpg'],
+    ['note', 'Wine/Bottles/Château Ausone - 2015.md'],
+  ]);
+});
+
+test('a folder shared by the note and its photos is only created once', async () => {
+  const written = await unpack(BOTTLE);
+  assert.deepEqual(written.filter((w) => w[0] === 'folder'), [['folder', 'wines']]);
+});
+
 test('anything else on the clipboard is refused, not half-written', async () => {
   const clipboard = { readText: async () => 'some unrelated text I copied' };
   Object.defineProperty(globalThis, 'navigator', { value: { clipboard }, configurable: true });

@@ -3,7 +3,7 @@
 
 import * as vault from './vault.js';
 import * as quickadd from './quickadd.js';
-import { getMode } from './connection.js';
+import { getMode, getFolders } from './connection.js';
 import { photoDataUri, CLIPBOARD_BUDGET } from './ui.js';
 import {
   noteBasename,
@@ -14,8 +14,6 @@ import {
   labelFilename,
   foodFilename,
 } from './note.js';
-
-export const WINES_FOLDER = 'wines';
 
 export class PermissionNeeded extends Error {
   constructor() {
@@ -43,7 +41,12 @@ export async function save({ record, labelBlob, foodBlob, ocrText }) {
   // to the caller rather than trying and silently failing.
   if (status !== 'granted') throw new PermissionNeeded();
 
-  const directory = await vault.ensureDirectory(WINES_FOLDER);
+  const { notes: notesFolder, attachments: attachmentsFolder } = getFolders();
+  const directory = await vault.ensureDirectory(notesFolder);
+  const attachmentsDirectory = attachmentsFolder === notesFolder
+    ? directory
+    : await vault.ensureDirectory(attachmentsFolder);
+
   const basename = await uniqueBasename(
     await usableBasename(directory, noteBasename(record)),
     (candidate) => vault.fileExists(directory, noteFilename(candidate)),
@@ -51,14 +54,14 @@ export async function save({ record, labelBlob, foodBlob, ocrText }) {
 
   const markdown = buildNote({ record, basename, hasFood: Boolean(foodBlob), ocrText });
 
-  await vault.writeFile(directory, labelFilename(basename), labelBlob);
-  if (foodBlob) await vault.writeFile(directory, foodFilename(basename), foodBlob);
+  await vault.writeFile(attachmentsDirectory, labelFilename(basename), labelBlob);
+  if (foodBlob) await vault.writeFile(attachmentsDirectory, foodFilename(basename), foodBlob);
   // The note goes last, so a link can never point at an image that is not there.
   await vault.writeFile(directory, noteFilename(basename), markdown);
 
   const vaultName = vault.getVaultName();
   const prefix = vaultName ? `${vaultName}/` : '';
-  return { mode: 'vault', path: `${prefix}${WINES_FOLDER}/${noteFilename(basename)}` };
+  return { mode: 'vault', path: `${prefix}${notesFolder}/${noteFilename(basename)}` };
 }
 
 /**
@@ -76,13 +79,14 @@ export async function save({ record, labelBlob, foodBlob, ocrText }) {
  * rather than leaving the bottle half-sent.
  */
 async function saveViaQuickAdd({ record, labelBlob, foodBlob, ocrText }) {
+  const { notes: notesFolder, attachments: attachmentsFolder } = getFolders();
   const config = quickadd.getConfig();
   const basename = noteBasename(record);
   const markdown = buildNote({ record, basename, hasFood: Boolean(foodBlob), ocrText });
-  const notePath = `${WINES_FOLDER}/${noteFilename(basename)}`;
+  const notePath = `${notesFolder}/${noteFilename(basename)}`;
 
-  const blobs = [{ path: `${WINES_FOLDER}/${labelFilename(basename)}`, blob: labelBlob }];
-  if (foodBlob) blobs.push({ path: `${WINES_FOLDER}/${foodFilename(basename)}`, blob: foodBlob });
+  const blobs = [{ path: `${attachmentsFolder}/${labelFilename(basename)}`, blob: labelBlob }];
+  if (foodBlob) blobs.push({ path: `${attachmentsFolder}/${foodFilename(basename)}`, blob: foodBlob });
 
   const share = Math.floor((CLIPBOARD_BUDGET - markdown.length) / blobs.length);
   const photos = [];

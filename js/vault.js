@@ -70,10 +70,18 @@ export async function reconnect() {
 
 /* ── Writing ────────────────────────────────────────────────────────── */
 
-/** Get (or create) a folder directly inside the connected vault. */
-export async function ensureDirectory(name) {
+/**
+ * Get (or create) a folder inside the connected vault, walking down one
+ * directory handle per `/`-separated segment so a nested path like
+ * `Wine/Bottles` works the same as a flat one.
+ */
+export async function ensureDirectory(path) {
   if (!handle) throw new Error('No vault is connected');
-  return handle.getDirectoryHandle(name, { create: true });
+  let dir = handle;
+  for (const segment of path.split('/').filter(Boolean)) {
+    dir = await dir.getDirectoryHandle(segment, { create: true });
+  }
+  return dir;
 }
 
 export async function writeFile(directory, filename, data) {
@@ -112,7 +120,7 @@ export function describe(state, name = '') {
     case 'granted':
       return {
         dot: 'ok',
-        text: `Connected to “${name}”. Notes are written to its wines folder.`,
+        text: `Connected to “${name}”. Notes and photos go to the folders set below.`,
         button: ['Change vault', 'pick'],
       };
     case 'prompt':

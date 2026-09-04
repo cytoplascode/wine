@@ -49,13 +49,19 @@ Label:: ![[Domaine Ponsot - Clos de la Roche - 2018.jpg]]
 Food:: ![[Domaine Ponsot - Clos de la Roche - 2018 - food.jpg]]
 ```
 
-Files land in a `wines/` folder inside the directory you connect:
+By default, files land in a `wines/` folder inside the directory you connect:
 
 ```
 wines/Domaine Ponsot - Clos de la Roche - 2018.md
 wines/Domaine Ponsot - Clos de la Roche - 2018.jpg
 wines/Domaine Ponsot - Clos de la Roche - 2018 - food.jpg   (optional)
 ```
+
+**Notes & photos folders**, on the home screen, changes that: set the note's folder and the
+photos' folder separately — `Wine/Bottles` and `Wine/Bottles/attachments`, say — and both fill
+in as nested folders as needed, in either connection mode. Leave a field blank and it falls
+back to `wines`. The two can also be the same folder, which is the default and keeps the layout
+above.
 
 The raw OCR text is kept at the end of each note inside an Obsidian `%% … %%` comment, so a
 wrong guess is always recoverable. It is invisible in reading view and in Bases.
@@ -99,6 +105,10 @@ works), say `scripts/Save from Label Scanner.md`:
 ````
 ```js
 const name = (path) => path.slice(path.lastIndexOf("/") + 1);
+const folderOf = (path) => {
+  const i = path.lastIndexOf("/");
+  return i === -1 ? "" : path.slice(0, i);
+};
 const rename = (path, base, suffix) =>
   suffix
     ? path.slice(0, path.length - name(path).length) +
@@ -114,9 +124,21 @@ module.exports = async (params) => {
   if (!parcel || parcel.v !== 1 || !parcel.note)
     throw new Error("Nothing from Label Scanner on the clipboard");
 
-  const folder = parcel.note.path.slice(0, parcel.note.path.lastIndexOf("/"));
-  if (folder && !app.vault.getAbstractFileByPath(folder))
-    await app.vault.createFolder(folder);
+  // The note and its photos can land in different folders (Notes & photos
+  // folders, in the app), so every folder any of them needs is walked and
+  // created a segment at a time, rather than trusting one createFolder call
+  // to make its parents too.
+  const folders = new Set(
+    [parcel.note.path, ...parcel.files.map((f) => f.path)].map(folderOf),
+  );
+  for (const folder of folders) {
+    if (!folder) continue;
+    let built = "";
+    for (const segment of folder.split("/")) {
+      built = built ? built + "/" + segment : segment;
+      if (!app.vault.getAbstractFileByPath(built)) await app.vault.createFolder(built);
+    }
+  }
 
   // Obsidian's own " 2", " 3" convention, decided once for the note and its
   // photos together so the note's ![[…]] embeds keep pointing at real files.

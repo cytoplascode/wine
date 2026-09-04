@@ -7,6 +7,7 @@ export const $ = (sel) => document.querySelector(sel);
 export const state = {
   labelBitmap: null,   // ImageBitmap straight from camera or gallery
   labelDate: null,     // when that photo was taken — today, or its EXIF date
+  labelLocation: null, // { lat, lon } where it was taken — live GPS or EXIF
   cropPoints: null,    // the crop handles, in source-image pixels
   flattened: null,     // { canvas, blob } after perspective correction
   foodBlob: null,
@@ -19,6 +20,7 @@ export function resetCapture() {
   if (state.labelBitmap) state.labelBitmap.close();
   state.labelBitmap = null;
   state.labelDate = null;
+  state.labelLocation = null;
   state.cropPoints = null;
   state.flattened = null;
   state.foodBlob = null;

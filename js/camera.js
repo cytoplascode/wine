@@ -2,13 +2,16 @@
  *
  * A label is very often photographed before the app is even open, so importing
  * an existing picture is a first-class path, not just a fallback. Both routes
- * end at the same place: an ImageBitmap and a capture date handed to onPhoto()
- * — today for a fresh camera shot, or the photo's own EXIF date for an older
- * one pulled from the gallery, so "Drink date" can start from a real guess.
+ * end at the same place: an ImageBitmap, a capture date, and where it was
+ * taken, handed to onPhoto() — today's date and a live GPS reading for a
+ * fresh camera shot (a canvas capture carries no EXIF of its own to fall
+ * back on), or the photo's own EXIF date and position for an older one
+ * pulled from the gallery. Only asked for on the label photo — the food
+ * photo shares the same moment and place, so there is nothing new to read.
  */
 
 import { $, toast } from './ui.js';
-import { readCaptureDate, localIsoDate } from './exif.js';
+import { readCaptureDate, readCaptureLocation, localIsoDate } from './exif.js';
 
 const TITLES = {
   label: 'Photograph the label',
@@ -83,8 +86,11 @@ async function takePhoto() {
   canvas.height = video.videoHeight;
   canvas.getContext('2d').drawImage(video, 0, 0);
 
-  const bitmap = await createImageBitmap(canvas);
-  onPhoto(bitmap, mode, localIsoDate());
+  const [bitmap, location] = await Promise.all([
+    createImageBitmap(canvas),
+    mode === 'food' ? null : currentLocation(),
+  ]);
+  onPhoto(bitmap, mode, localIsoDate(), location);
 }
 
 async function importFromGallery(event) {
@@ -95,14 +101,33 @@ async function importFromGallery(event) {
   try {
     // 'from-image' applies the EXIF orientation tag, which phone cameras rely
     // on: without it a portrait photo arrives on its side.
-    const [bitmap, capturedOn] = await Promise.all([
+    const [bitmap, capturedOn, location] = await Promise.all([
       createImageBitmap(file, { imageOrientation: 'from-image' }),
       readCaptureDate(file),
+      mode === 'food' ? null : readCaptureLocation(file),
     ]);
-    onPhoto(bitmap, mode, capturedOn || localIsoDate());
+    onPhoto(bitmap, mode, capturedOn || localIsoDate(), location);
   } catch (err) {
     toast(`That image could not be opened: ${err.message}`);
   }
+}
+
+/**
+ * The phone's current position, or null on any refusal, timeout, or a
+ * browser with no geolocation API at all — this is a nice-to-have guess, not
+ * something to block a capture over. A five-minute-old fix is accepted
+ * rather than forcing a fresh lock, so a second bottle photographed at the
+ * same table does not each pay for a cold GPS start.
+ */
+function currentLocation() {
+  if (!navigator.geolocation) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (position) => resolve({ lat: position.coords.latitude, lon: position.coords.longitude }),
+      () => resolve(null),
+      { timeout: 4000, maximumAge: 5 * 60 * 1000 },
+    );
+  });
 }
 
 function showHint(text) {

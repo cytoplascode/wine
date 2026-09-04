@@ -65,6 +65,15 @@ export const WINE_FIELDS = [
   // position regardless: WINE_FIELDS order is frontmatter order, and `group`
   // is the only thing that may move.
   { key: 'Drink date', emit: 'bare', group: 'main', type: 'date', auto: true },
+
+  // Where the label photo was taken: coordinates from the phone (EXIF on a
+  // gallery import, live GPS for an in-app shutter capture, since a canvas
+  // capture carries no EXIF of its own to read back), a best-effort place
+  // name from reverse-geocoding those coordinates, and a free-text field for
+  // a venue the geocoder cannot know — "Bistro du Chef" isn't in any map data.
+  { key: 'Coordinates', emit: 'quoted', group: 'main', type: 'text', auto: true },
+  { key: 'Place', emit: 'quoted', group: 'main', type: 'text', auto: true },
+  { key: 'Venue', emit: 'quoted', group: 'main', type: 'text' },
 ];
 
 /** Fields the user can actually type into, in template order. */

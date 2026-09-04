@@ -217,6 +217,29 @@ export function setValues(record, autoKeys = []) {
   refreshGrips();
 }
 
+/**
+ * Fill in one field's guess after the form is already showing — a result
+ * that arrived later than the rest, such as a reverse-geocoded place name
+ * that took a network round trip. Only touches that one field, and only
+ * while it is still blank, so it can never overwrite something the user
+ * typed elsewhere, or into this field itself, while the guess was in flight.
+ */
+export function patchIfEmpty(key, value) {
+  if (!value) return;
+  const wrapper = $(`#wine-form [data-field="${CSS.escape(key)}"]`);
+  if (!wrapper) return;
+  const input = wrapper.querySelector('[data-key]');
+  if (!input || input.value.trim()) return;
+
+  input.value = value;
+  const chip = wrapper.querySelector('.chip');
+  if (chip) {
+    chip.hidden = false;
+    chip.closest('details.group')?.setAttribute('open', '');
+  }
+  refreshGrip(wrapper);
+}
+
 /** Read the form back into a record, plus the tasting note. */
 export function readValues() {
   const record = emptyRecord();

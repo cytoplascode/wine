@@ -43,6 +43,7 @@ const SHELL_ASSETS = [
   './js/languages.js',
   './js/note.js',
   './js/save.js',
+  './js/geocode.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',

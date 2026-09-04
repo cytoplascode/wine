@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { parseExifDate, localIsoDate } from '../js/exif.js';
+import { parseExifDate, parseExifLocation, localIsoDate } from '../js/exif.js';
 
 /**
  * Assemble a minimal JPEG carrying one APP1/EXIF segment, byte by byte, so the
@@ -11,7 +11,12 @@ import { parseExifDate, localIsoDate } from '../js/exif.js';
  * carries; `dateTimeOnly` goes straight in IFD0, the fallback a camera that
  * skips the SubIFD would leave. Either, both, or neither may be set.
  */
-function buildJpeg({ little = true, dateTimeOriginal, dateTimeOnly } = {}) {
+/**
+ * `gps`, when given, is `{ latRef, lat, lonRef, lon }` where `lat`/`lon` are
+ * each three `[numerator, denominator]` pairs — degrees, minutes, seconds,
+ * exactly the rationals a real GPS IFD stores.
+ */
+function buildJpeg({ little = true, dateTimeOriginal, dateTimeOnly, gps } = {}) {
   const bytes = [];
   const push = (...values) => bytes.push(...values);
   const at = () => bytes.length;
@@ -42,15 +47,24 @@ function buildJpeg({ little = true, dateTimeOriginal, dateTimeOnly } = {}) {
   const ifd0Entries = [];
   if (dateTimeOnly) ifd0Entries.push('dateTimeOnly');
   if (dateTimeOriginal) ifd0Entries.push('subIfd');
+  if (gps) ifd0Entries.push('gps');
+
+  // Tag, type (4 = LONG, 2 = ASCII) and count for each possible IFD0 entry.
+  const IFD0_SHAPE = {
+    subIfd: [0x8769, 4, 1],
+    gps: [0x8825, 4, 1],
+    dateTimeOnly: [0x0132, 2, 20],
+  };
 
   // IFD0
   tu16(ifd0Entries.length);
   const ifd0EntryOffsets = {};
   for (const kind of ifd0Entries) {
     ifd0EntryOffsets[kind] = tiff.length;
-    tu16(kind === 'subIfd' ? 0x8769 : 0x0132);
-    tu16(kind === 'subIfd' ? 4 : 2);            // LONG for the pointer, ASCII for a date string
-    tu32(kind === 'subIfd' ? 1 : 20);
+    const [tag, type, count] = IFD0_SHAPE[kind];
+    tu16(tag);
+    tu16(type);
+    tu32(count);
     tpush(0, 0, 0, 0);                          // value patched in below, once offsets are known
   }
   tu32(0);                                      // no next IFD
@@ -84,6 +98,35 @@ function buildJpeg({ little = true, dateTimeOriginal, dateTimeOnly } = {}) {
     view.setUint32(0, subIfdStart, little);
     const entryOffset = ifd0EntryOffsets.subIfd + 8;
     for (let i = 0; i < 4; i++) tiff[entryOffset + i] = view.getUint8(i);
+  }
+
+  if (gps) {
+    const patchPointer = (entryOffset, target) => {
+      const view = new DataView(new ArrayBuffer(4));
+      view.setUint32(0, target, little);
+      for (let i = 0; i < 4; i++) tiff[entryOffset + 8 + i] = view.getUint8(i);
+    };
+
+    const gpsIfdStart = tiff.length;
+    tu16(4);   // GPSLatitudeRef, GPSLatitude, GPSLongitudeRef, GPSLongitude
+
+    tu16(0x0001); tu16(2); tu32(2); tpush(gps.latRef.charCodeAt(0), 0, 0, 0);
+    const latEntryOffset = tiff.length;
+    tu16(0x0002); tu16(5); tu32(3); tpush(0, 0, 0, 0);
+    tu16(0x0003); tu16(2); tu32(2); tpush(gps.lonRef.charCodeAt(0), 0, 0, 0);
+    const lonEntryOffset = tiff.length;
+    tu16(0x0004); tu16(5); tu32(3); tpush(0, 0, 0, 0);
+    tu32(0);   // no next IFD
+
+    const latDataOffset = tiff.length;
+    for (const [num, den] of gps.lat) { tu32(num); tu32(den); }
+    patchPointer(latEntryOffset, latDataOffset);
+
+    const lonDataOffset = tiff.length;
+    for (const [num, den] of gps.lon) { tu32(num); tu32(den); }
+    patchPointer(lonEntryOffset, lonDataOffset);
+
+    patchPointer(ifd0EntryOffsets.gps, gpsIfdStart);
   }
 
   // ── Wrap the TIFF payload in a JPEG APP1 segment ──
@@ -130,6 +173,55 @@ test('not a JPEG returns null rather than throwing', () => {
 test('a truncated EXIF segment returns null rather than throwing', () => {
   const full = new Uint8Array(buildJpeg({ dateTimeOriginal: '2024:03:15' }));
   assert.equal(parseExifDate(full.slice(0, 20).buffer), null);
+});
+
+/* ── GPS ────────────────────────────────────────────────────────────── */
+
+const PARIS = {
+  latRef: 'N', lat: [[48, 1], [51, 1], [24, 1]],       // 48°51'24" N
+  lonRef: 'E', lon: [[2, 1], [21, 1], [3, 1]],          // 2°21'3" E
+};
+
+function closeTo(actual, expected, epsilon = 1e-6) {
+  assert.ok(Math.abs(actual - expected) < epsilon, `${actual} not close to ${expected}`);
+}
+
+test('reads GPS coordinates out of the GPS IFD', () => {
+  const location = parseExifLocation(buildJpeg({ gps: PARIS }));
+  assert.ok(location);
+  closeTo(location.lat, 48 + 51 / 60 + 24 / 3600);
+  closeTo(location.lon, 2 + 21 / 60 + 3 / 3600);
+});
+
+test('a southern and western position comes back negative', () => {
+  const location = parseExifLocation(buildJpeg({
+    gps: { latRef: 'S', lat: [[33, 1], [51, 1], [35, 1]], lonRef: 'W', lon: [[70, 1], [40, 1], [0, 1]] },
+  }));
+  closeTo(location.lat, -(33 + 51 / 60 + 35 / 3600));
+  closeTo(location.lon, -(70 + 40 / 60));
+});
+
+test('GPS works in both byte orders a camera might use', () => {
+  closeTo(parseExifLocation(buildJpeg({ little: true, gps: PARIS })).lat, 48 + 51 / 60 + 24 / 3600);
+  closeTo(parseExifLocation(buildJpeg({ little: false, gps: PARIS })).lat, 48 + 51 / 60 + 24 / 3600);
+});
+
+test('a photo with a date but no GPS tags returns null for location', () => {
+  assert.equal(parseExifLocation(buildJpeg({ dateTimeOriginal: '2024:03:15' })), null);
+});
+
+test('a photo with GPS but no date returns null for the date, and vice versa', () => {
+  const buffer = buildJpeg({ gps: PARIS });
+  assert.equal(parseExifDate(buffer), null);
+  assert.ok(parseExifLocation(buffer));
+
+  const dateOnly = buildJpeg({ dateTimeOriginal: '2024:03:15' });
+  assert.equal(parseExifLocation(dateOnly), null);
+});
+
+test('a JPEG with no EXIF at all returns null for location too', () => {
+  const bytes = new Uint8Array([0xff, 0xd8, 0xff, 0xdb, 0x00, 0x02, 0xff, 0xd9]);
+  assert.equal(parseExifLocation(bytes.buffer), null);
 });
 
 test('localIsoDate reports the calendar date, not the UTC one', () => {

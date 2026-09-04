@@ -1,7 +1,9 @@
 # Label Scanner
 
 A phone-only PWA that turns a photo of a wine label into a note in your Obsidian vault —
-entirely on the device, with no network calls at all once installed.
+entirely on the device, with one narrow exception: a best-effort lookup of the place name for
+where the label photo was taken, the only thing here that ever touches the network (see
+[Where it was taken](#where-it-was-taken)).
 
 Photograph the label (or pick a photo from your gallery), drag the handles onto its edges, and
 the app unwraps the label off the curve of the bottle, reads the text with Tesseract running
@@ -11,7 +13,12 @@ straight into a folder you choose.
 ## The note it writes
 
 Output matches the `fileClass: Wine` template used in the vault this was built for — same
-keys, same order, same spelling (`Appelation`), same defaults:
+keys, same order, same spelling (`Appelation`), same defaults — plus three keys of its own for
+where the label was photographed, appended at the end so nothing already there moves. Those
+three are new to *this app*; they will not mean anything to your vault's own `Wine` fileClass
+until you add matching properties there too (Obsidian doesn't require it — an unrecognised key
+in frontmatter is harmless — but a Base view will not show a column for one it hasn't been told
+about):
 
 ```markdown
 ---
@@ -38,6 +45,9 @@ Inventory: 0
 Buy: 0
 Buy date:
 Drink date:
+Coordinates:
+Place:
+Venue:
 ---
 
 ## Tasting note
@@ -70,6 +80,34 @@ Filenames keep their accents — a vault full of `Château` should read properly
 file system refuses non-ASCII names, the app notices and folds just the filename down to
 `Chateau …`; the frontmatter keeps the real spelling either way. A name that already exists
 gets Obsidian's own ` 2`, ` 3` suffix rather than overwriting anything.
+
+## Where it was taken
+
+Three fields, filled in on the review screen exactly like the OCR guesses — visibly a guess
+until you edit one, then it's yours:
+
+- **Coordinates** — where the photo was taken, as plain decimal degrees. A photo taken with the
+  in-app shutter reads the phone's live GPS position at the moment you tap it (Chrome will ask
+  for location permission the first time); a photo imported from the **Gallery** instead reads
+  the position out of the photo's own EXIF data, if your camera app recorded one. Those are
+  different sources on purpose: a shutter photo is drawn through a `<canvas>` on its way to a
+  bitmap, which strips every bit of EXIF the original had — there is nothing left in it to read
+  back. Only the label photo is asked for either way; the food photo shares the same moment and
+  place, so nothing new is read for it.
+- **Place** — a short, human-readable guess at the same coordinates — "Bistro du Chef, Paris,
+  France", say — filled in a moment after Coordinates, once a reverse-geocoding lookup against
+  [Nominatim](https://nominatim.openstreetmap.org) (OpenStreetMap's free, keyless geocoder)
+  returns. This is the one request this app ever makes over the network; everything else runs
+  entirely on the device. No connection, a slow one, or the lookup simply not finding anything
+  all fail the same way — quietly, leaving the field blank for you to fill in by hand — never
+  something to notice or work around.
+- **Venue** — a plain text field, never filled in for you. Nominatim's guess is usually a
+  street or a neighbourhood, not "the specific restaurant" — if that's what you want on the
+  note, this is where to type it.
+
+Skip a shutter photo's location prompt (or just deny it) and Coordinates stays blank, same as a
+Gallery import with no GPS in its EXIF — Place and Venue are unaffected either way, and nothing
+about saving the note changes.
 
 ## Requirements
 
@@ -293,27 +331,38 @@ permission prompt avoids the question.
 No build step and no runtime dependencies — it is plain ES modules served as files.
 
 ```sh
-npm test          # warp and unwrap, parser, note writer, vault states, languages, routing, EXIF
+npm test          # warp and unwrap, parser, note writer, vault states, languages, routing, EXIF, geocoding
 npm run serve     # http://localhost:8000
 ```
 
 Camera capture and the directory picker need a secure context, so `localhost` works but a
 LAN IP does not.
 
-The pure modules — `warp.js`, `parse.js`, `note.js`, `languages.js`, `nav.js`, `exif.js` and the
-vault state machine — carry the tests. `nav.js` holds the screen stack behind the back button
-and returns a plan rather than touching the History API, which is what makes its awkward cases
-— returning to a screen already visited, a back press landing outside the stack — testable at
-all. `exif.js` parses the JPEG/TIFF byte layout directly rather than going through
-`file.arrayBuffer()`, so its tests build a real EXIF segment byte by byte instead of shipping a
-binary fixture. `note.test.js` asserts a generated note against the vault template
-byte for byte, which is what stops the frontmatter drifting; `cylinder.test.js` photographs a
-test image onto a modelled bottle using real pinhole geometry, then checks the unwrap gets it
-back — deliberately different maths from the one the unwrap uses, so it measures the
-approximation rather than restating it.
+The pure modules — `warp.js`, `parse.js`, `note.js`, `languages.js`, `nav.js`, `exif.js`,
+`geocode.js` and the vault state machine — carry the tests. `nav.js` holds the screen stack
+behind the back button and returns a plan rather than touching the History API, which is what
+makes its awkward cases — returning to a screen already visited, a back press landing outside
+the stack — testable at all. `exif.js` parses the JPEG/TIFF byte layout directly rather than
+going through `file.arrayBuffer()`, so its tests build a real EXIF segment byte by byte instead
+of shipping a binary fixture — the GPS IFD included, since a hand-rolled TIFF is the only way to
+be sure the rational-to-decimal conversion is exercised against real bytes rather than restated
+in the test. `geocode.js` splits the actual `fetch()` (untestable here, and unreachable through
+this project's own sandboxed network besides) from `placeName()`, the pure formatting of a
+Nominatim response into one short string — that half is what `geocode.test.js` covers, with
+response shapes lifted from Nominatim's documented reply format. `note.test.js` asserts a
+generated note against the vault template byte for byte, which is what stops the frontmatter
+drifting; `cylinder.test.js` photographs a test image onto a modelled bottle using real pinhole
+geometry, then checks the unwrap gets it back — deliberately different maths from the one the
+unwrap uses, so it measures the approximation rather than restating it.
 
-`showDirectoryPicker()` cannot be driven by an automated browser, so the vault write path is
-best checked by hand against a throwaway folder before pointing it at a real vault.
+Camera capture, the geolocation prompt, and `showDirectoryPicker()` cannot be driven by an
+automated browser under `node --test`. The vault write path is best checked by hand against a
+throwaway folder before pointing it at a real vault; the capture-to-review path (a live shutter
+photo under a fake camera and a mocked GPS fix, the reverse-geocode round trip against a stubbed
+response, the race guard that stops a slow lookup for one bottle landing on the next) was
+instead checked by hand in Chromium with Playwright, launched with
+`--use-fake-device-for-media-stream --use-fake-ui-for-media-stream` and a mocked `geolocation`
+context option.
 
 `quickadd.js`'s `macroUri` and `buildPayload` take the connection and the bottle as explicit
 arguments rather than reading the saved ones, which is what lets `quickadd.test.js` check the

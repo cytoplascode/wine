@@ -1,15 +1,28 @@
-/* The date a label photo was taken, so a scan can suggest when the wine was
- * actually drunk instead of defaulting everything to today.
+/* The date and GPS position a label photo was taken at, so a scan can suggest
+ * when the wine was drunk and where, instead of defaulting to today and
+ * nothing.
  *
  * JPEG only — every photo this app produces or accepts on Chrome for Android
- * is one — and only the calendar date, since that is all "Drink date" needs.
- * Anything unexpected (no EXIF, a different format, a truncated file) returns
- * null rather than guessing.
+ * is one. Only the calendar date is read, since that is all "Drink date"
+ * needs, and only coordinates for position — no altitude, no timestamp.
+ * Anything unexpected (no EXIF, a different format, a truncated file, no GPS
+ * tags) returns null rather than guessing.
+ *
+ * This only ever finds anything on a photo imported from the Gallery: a
+ * photo taken with this app's own shutter is drawn through a `<canvas>` on
+ * its way to a bitmap, which carries none of its source's EXIF forward. A
+ * live GPS reading at the moment of capture (see camera.js) is what covers
+ * that case instead.
  */
 
 const EXIF_SUB_IFD = 0x8769;        // pointer from IFD0 to the Exif SubIFD
 const DATE_TIME_ORIGINAL = 0x9003;  // in the SubIFD: when the shutter opened
 const DATE_TIME = 0x0132;           // IFD0 fallback, for a camera that skips the SubIFD
+const GPS_IFD = 0x8825;             // pointer from IFD0 to the GPS IFD
+const GPS_LAT_REF = 0x0001;         // 'N' or 'S'
+const GPS_LAT = 0x0002;             // degrees, minutes, seconds as three rationals
+const GPS_LON_REF = 0x0003;         // 'E' or 'W'
+const GPS_LON = 0x0004;
 
 /** Today, as the calendar date the phone is currently on — not `toISOString()`,
  *  which reports UTC and can name the wrong day within a few hours of midnight. */
@@ -32,8 +45,33 @@ export async function readCaptureDate(file) {
   }
 }
 
+/** `{ lat, lon }` in decimal degrees from a photo File's EXIF GPS tags, or null. */
+export async function readCaptureLocation(file) {
+  try {
+    const buffer = await file.slice(0, 128 * 1024).arrayBuffer();
+    return parseExifLocation(buffer);
+  } catch {
+    return null;
+  }
+}
+
 /** Pure and synchronous, so it is testable without a real photo file. */
 export function parseExifDate(buffer) {
+  return walkApp1(buffer, readApp1Date);
+}
+
+/** Pure and synchronous, mirroring parseExifDate. */
+export function parseExifLocation(buffer) {
+  return walkApp1(buffer, readApp1Location);
+}
+
+/**
+ * Scan a JPEG's markers for its EXIF (APP1) segment(s), handing each to
+ * `extract` until one yields a result. More than one APP1 segment is
+ * unusual, but a first segment that parses without carrying what `extract`
+ * is after should not stop the search.
+ */
+function walkApp1(buffer, extract) {
   const view = new DataView(buffer);
   if (view.byteLength < 4 || view.getUint16(0) !== 0xffd8) return null;   // not a JPEG
 
@@ -44,15 +82,16 @@ export function parseExifDate(buffer) {
     if (marker === 0xffda) return null;              // start of scan — no more markers before pixel data
     const length = view.getUint16(offset + 2);
     if (marker === 0xffe1) {
-      const date = readApp1(view, offset + 4);
-      if (date) return date;
+      const result = extract(view, offset + 4);
+      if (result) return result;
     }
     offset += 2 + length;
   }
   return null;
 }
 
-function readApp1(view, start) {
+/** The TIFF payload of one APP1 segment, or null if it isn't a valid EXIF one. */
+function readTiffHeader(view, start) {
   if (start + 6 > view.byteLength) return null;
   if (view.getUint32(start) !== 0x45786966 || view.getUint16(start + 4) !== 0) return null;   // "Exif\0\0"
 
@@ -64,7 +103,13 @@ function readApp1(view, start) {
   if (view.getUint16(tiff + 2, little) !== 0x002a) return null;    // TIFF magic number
 
   const ifd0 = tiff + view.getUint32(tiff + 4, little);
-  const ifd0Entries = readIFD(view, ifd0, little);
+  return { tiff, little, ifd0Entries: readIFD(view, ifd0, little) };
+}
+
+function readApp1Date(view, start) {
+  const header = readTiffHeader(view, start);
+  if (!header) return null;
+  const { tiff, little, ifd0Entries } = header;
 
   const subIfdPointer = ifd0Entries.get(EXIF_SUB_IFD);
   if (subIfdPointer) {
@@ -76,6 +121,49 @@ function readApp1(view, start) {
 
   const fallback = ifd0Entries.get(DATE_TIME);
   return fallback ? toIsoDate(readAscii(view, tiff, fallback, little)) : null;
+}
+
+function readApp1Location(view, start) {
+  const header = readTiffHeader(view, start);
+  if (!header) return null;
+  const { tiff, little, ifd0Entries } = header;
+
+  const gpsPointer = ifd0Entries.get(GPS_IFD);
+  if (!gpsPointer) return null;
+  const gpsIfd = tiff + view.getUint32(gpsPointer.valueOffset, little);
+  const gpsEntries = readIFD(view, gpsIfd, little);
+
+  const latRef = gpsEntries.get(GPS_LAT_REF);
+  const lat = gpsEntries.get(GPS_LAT);
+  const lonRef = gpsEntries.get(GPS_LON_REF);
+  const lon = gpsEntries.get(GPS_LON);
+  if (!latRef || !lat || !lonRef || !lon) return null;
+
+  const latitude = readDegrees(view, tiff, lat, little, readAsciiChar(view, latRef));
+  const longitude = readDegrees(view, tiff, lon, little, readAsciiChar(view, lonRef));
+  if (latitude === null || longitude === null) return null;
+  return { lat: latitude, lon: longitude };
+}
+
+/** The single inline ASCII character of a GPS *Ref tag ('N'/'S'/'E'/'W'). */
+function readAsciiChar(view, entry) {
+  return String.fromCharCode(view.getUint8(entry.valueOffset));
+}
+
+/** Degrees, minutes, seconds — three RATIONALs — folded to decimal degrees,
+ *  negated for the southern and western hemispheres. */
+function readDegrees(view, tiffStart, entry, little, ref) {
+  if (entry.count < 3) return null;
+  const offset = tiffStart + view.getUint32(entry.valueOffset, little);
+  if (offset < 0 || offset + 24 > view.byteLength) return null;
+
+  const part = (i) => {
+    const numerator = view.getUint32(offset + i * 8, little);
+    const denominator = view.getUint32(offset + i * 8 + 4, little);
+    return denominator ? numerator / denominator : 0;
+  };
+  const decimal = part(0) + part(1) / 60 + part(2) / 3600;
+  return ref === 'S' || ref === 'W' ? -decimal : decimal;
 }
 
 /** Tag → `{ type, count, valueOffset }` for one IFD table. */

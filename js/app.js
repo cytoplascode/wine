@@ -14,7 +14,8 @@ import { parseLabel } from './parse.js';
 import * as vault from './vault.js';
 import * as quickadd from './quickadd.js';
 import { getMode, setMode, getFolders, setFolders } from './connection.js';
-import { readValues } from './form.js';
+import { readValues, patchIfEmpty } from './form.js';
+import { reverseGeocode } from './geocode.js';
 import { save, PermissionNeeded } from './save.js';
 import {
   LANGUAGES, MAX_ACTIVE, getLanguages, setLanguages, toTesseractLangs, totalMegabytes,
@@ -22,7 +23,7 @@ import {
 
 /* ── Photo handling ─────────────────────────────────────────────────── */
 
-async function handlePhoto(bitmap, mode, capturedOn) {
+async function handlePhoto(bitmap, mode, capturedOn, location) {
   if (mode === 'food') {
     state.foodBlob = await bitmapToBlob(bitmap);
     bitmap.close();
@@ -32,6 +33,7 @@ async function handlePhoto(bitmap, mode, capturedOn) {
   if (state.labelBitmap) state.labelBitmap.close();
   state.labelBitmap = bitmap;
   state.labelDate = capturedOn || null;
+  state.labelLocation = location || null;
   state.cropPoints = null;
   go('crop');
 }
@@ -105,10 +107,39 @@ function withCaptureDate(record) {
 }
 const captureDateAuto = () => (state.labelDate ? ['Drink date'] : []);
 
+/** Merge in the label photo's coordinates the same way — a guess, marked AUTO. */
+function withLocation(record) {
+  return state.labelLocation ? { ...record, Coordinates: formatCoordinates(state.labelLocation) } : record;
+}
+const locationAuto = () => (state.labelLocation ? ['Coordinates'] : []);
+
+function formatCoordinates({ lat, lon }) {
+  return `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+}
+
+const withAutoContext = (record) => withLocation(withCaptureDate(record));
+const autoContextKeys = () => [...captureDateAuto(), ...locationAuto()];
+
+/**
+ * A best-effort place name for the label's coordinates, filled in once it
+ * resolves rather than blocking review on a network round trip. Guarded
+ * against a fetch that is still in flight when the user moves on to a
+ * different bottle — state.labelLocation is a fresh object per capture, so a
+ * reference check catches a result that would otherwise land on the wrong
+ * one.
+ */
+async function resolvePlace() {
+  const location = state.labelLocation;
+  if (!location) return;
+  const place = await reverseGeocode(location);
+  if (place && state.labelLocation === location) patchIfEmpty('Place', place);
+}
+
 async function runOcr() {
   if (!state.flattened || state.ocrText) return;
 
-  setValues(withCaptureDate(emptyRecord()), captureDateAuto());
+  setValues(withAutoContext(emptyRecord()), autoContextKeys());
+  resolvePlace();
   $('#raw-text').textContent = '';
   showOcrProgress(0, 'Starting the recognition engine…');
   try {
@@ -125,7 +156,7 @@ async function runOcr() {
 
     const { fields, auto } = parseLabel(result);
     state.fields = fields;
-    setValues(withCaptureDate({ ...emptyRecord(), ...fields }), [...auto, ...captureDateAuto()]);
+    setValues(withAutoContext({ ...emptyRecord(), ...fields }), [...auto, ...autoContextKeys()]);
   } catch (err) {
     $('#raw-text').textContent = '';
     toast(`Could not read the label: ${err.message}`);

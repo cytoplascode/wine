@@ -36,7 +36,10 @@ Points:
 Inventory: 0
 Buy: 0
 Buy date:
-Drink date:`;
+Drink date:
+Coordinates:
+Place:
+Venue:`;
 
 const filled = () => ({
   ...emptyRecord(),
@@ -62,7 +65,7 @@ test('the key order and spelling never change', () => {
     'fileClass', 'Name', 'Winemaker', 'WineName', 'Vintage', 'Type', 'Varieties',
     'Country', 'Region', 'Appelation', 'Vineyard', 'Style', 'Price',
     'PurchaseSource', 'PurchaseLink', 'PurchaseCountry', 'Stars', 'ValueForMoney',
-    'Points', 'Inventory', 'Buy', 'Buy date', 'Drink date',
+    'Points', 'Inventory', 'Buy', 'Buy date', 'Drink date', 'Coordinates', 'Place', 'Venue',
   ]);
   // The vault spells it with one l; correcting it would break every Base query.
   assert.ok(keys.includes('Appelation'));
@@ -77,6 +80,15 @@ test('values are quoted, and the resting defaults survive', () => {
   assert.match(frontmatter, /^Stars: --$/m);
   assert.match(frontmatter, /^Inventory: 0$/m);
   assert.match(frontmatter, /^Buy: 0$/m);
+});
+
+test('the capture-context fields are quoted like any other text field', () => {
+  const frontmatter = buildFrontmatter({
+    ...emptyRecord(), Coordinates: '48.85660, 2.35220', Place: 'Paris, France', Venue: 'Bistro du Chef',
+  });
+  assert.match(frontmatter, /^Coordinates: "48\.85660, 2\.35220"$/m);
+  assert.match(frontmatter, /^Place: "Paris, France"$/m);
+  assert.match(frontmatter, /^Venue: "Bistro du Chef"$/m);
 });
 
 test('numbers and dates are written bare, not quoted', () => {

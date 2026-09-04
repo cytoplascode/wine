@@ -142,6 +142,12 @@ function readApp1Location(view, start) {
   const latitude = readDegrees(view, tiff, lat, little, readAsciiChar(view, latRef));
   const longitude = readDegrees(view, tiff, lon, little, readAsciiChar(view, lonRef));
   if (latitude === null || longitude === null) return null;
+
+  // Some cameras write a structurally complete but zeroed-out GPS IFD as
+  // their placeholder for "no fix was acquired" rather than omitting the
+  // tags altogether — this is Null Island, not a real bottle of wine.
+  if (latitude === 0 && longitude === 0) return null;
+
   return { lat: latitude, lon: longitude };
 }
 
@@ -151,7 +157,11 @@ function readAsciiChar(view, entry) {
 }
 
 /** Degrees, minutes, seconds — three RATIONALs — folded to decimal degrees,
- *  negated for the southern and western hemispheres. */
+ *  negated for the southern and western hemispheres. Null if any of the
+ *  three is n/0: EXIF's own convention for "value not available", not zero —
+ *  treating it as zero is what silently turned an absent GPS fix into
+ *  0°0'0", the other shape "no fix" shows up as on cameras that omit the
+ *  denominator instead of the whole tag. */
 function readDegrees(view, tiffStart, entry, little, ref) {
   if (entry.count < 3) return null;
   const offset = tiffStart + view.getUint32(entry.valueOffset, little);
@@ -160,9 +170,14 @@ function readDegrees(view, tiffStart, entry, little, ref) {
   const part = (i) => {
     const numerator = view.getUint32(offset + i * 8, little);
     const denominator = view.getUint32(offset + i * 8 + 4, little);
-    return denominator ? numerator / denominator : 0;
+    return denominator ? numerator / denominator : null;
   };
-  const decimal = part(0) + part(1) / 60 + part(2) / 3600;
+  const degrees = part(0);
+  const minutes = part(1);
+  const seconds = part(2);
+  if (degrees === null || minutes === null || seconds === null) return null;
+
+  const decimal = degrees + minutes / 60 + seconds / 3600;
   return ref === 'S' || ref === 'W' ? -decimal : decimal;
 }
 

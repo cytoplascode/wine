@@ -219,6 +219,34 @@ test('a photo with GPS but no date returns null for the date, and vice versa', (
   assert.equal(parseExifLocation(dateOnly), null);
 });
 
+test('a zeroed-out GPS IFD reads as no fix, not Null Island', () => {
+  // What a phone that had location services off at capture time actually
+  // writes: the tags are all present, but the rationals are 0/1.
+  const location = parseExifLocation(buildJpeg({
+    gps: { latRef: 'N', lat: [[0, 1], [0, 1], [0, 1]], lonRef: 'E', lon: [[0, 1], [0, 1], [0, 1]] },
+  }));
+  assert.equal(location, null);
+});
+
+test('an unset rational (n/0) reads as no fix rather than folding to zero', () => {
+  // EXIF's own convention for "value not available" — the other shape a
+  // missing fix takes, on cameras that zero the denominator instead.
+  const location = parseExifLocation(buildJpeg({
+    gps: { latRef: 'N', lat: [[0, 0], [0, 0], [0, 0]], lonRef: 'E', lon: [[0, 0], [0, 0], [0, 0]] },
+  }));
+  assert.equal(location, null);
+});
+
+test('a real position with a zero seconds component still reads correctly', () => {
+  // Guards against the fix over-firing: only an all-zero *result* is treated
+  // as unset, not a coordinate that legitimately has a zero part.
+  const location = parseExifLocation(buildJpeg({
+    gps: { latRef: 'N', lat: [[48, 1], [51, 1], [0, 1]], lonRef: 'E', lon: [[2, 1], [21, 1], [0, 1]] },
+  }));
+  closeTo(location.lat, 48 + 51 / 60);
+  closeTo(location.lon, 2 + 21 / 60);
+});
+
 test('a JPEG with no EXIF at all returns null for location too', () => {
   const bytes = new Uint8Array([0xff, 0xd8, 0xff, 0xdb, 0x00, 0x02, 0xff, 0xd9]);
   assert.equal(parseExifLocation(bytes.buffer), null);

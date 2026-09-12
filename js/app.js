@@ -16,7 +16,7 @@ import * as quickadd from './quickadd.js';
 import { getMode, setMode, getFolders, setFolders } from './connection.js';
 import { readValues, patchIfEmpty } from './form.js';
 import { reverseGeocode } from './geocode.js';
-import { save, PermissionNeeded } from './save.js';
+import { save, launchUri, PermissionNeeded } from './save.js';
 import {
   LANGUAGES, MAX_ACTIVE, getLanguages, setLanguages, toTesseractLangs, totalMegabytes,
 } from './languages.js';
@@ -267,7 +267,7 @@ function renderUnsent(result) {
     button.disabled = true;
     try {
       await navigator.clipboard.writeText(result.payload);
-      location.href = result.uri;
+      launchUri(result.uri);
     } catch (err) {
       toast(`Could not send it: ${err.message}`);
     } finally {

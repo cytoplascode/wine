@@ -106,8 +106,27 @@ async function saveViaQuickAdd({ record, labelBlob, foodBlob, ocrText }) {
     return { mode: 'quickadd', path: notePath, sent: false, payload, uri, reduced };
   }
 
-  location.href = uri;
+  launchUri(uri);
   return { mode: 'quickadd', path: notePath, sent: true, reduced };
+}
+
+/**
+ * Open a custom-scheme URI (obsidian://…) so Android routes it to the app
+ * that registered the scheme. Uses a synthetic anchor click rather than
+ * `location.href = uri` because the second bottle sends *the exact same*
+ * URI as the first (only the clipboard payload differs), and Chrome on
+ * Android silently deduplicates a repeat `location.href = same_string` —
+ * clipboard gets the new content but Obsidian never wakes up, so the note
+ * looks saved but nothing lands. A programmatic anchor click is always
+ * treated as a fresh user navigation and fires the intent every time.
+ */
+export function launchUri(uri) {
+  const link = document.createElement('a');
+  link.href = uri;
+  link.rel = 'noopener';
+  document.body.append(link);
+  link.click();
+  link.remove();
 }
 
 /**

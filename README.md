@@ -68,7 +68,7 @@ wines/Domaine Ponsot - Clos de la Roche - 2018.jpg
 wines/Domaine Ponsot - Clos de la Roche - 2018 - food.jpg   (optional)
 ```
 
-**Notes & photos folders**, on the home screen, changes that: set the note's folder and the
+**Notes & photos folders**, in Settings, changes that: set the note's folder and the
 photos' folder separately — `Wine/Bottles` and `Wine/Bottles/attachments`, say — and both fill
 in as nested folders as needed, in either connection mode. Leave a field blank and it falls
 back to `wines`. The two can also be the same folder, which is the default and keeps the layout
@@ -226,12 +226,19 @@ little harder than one without.
 
 ## Using it
 
+The home screen deliberately holds almost nothing — a **New bottle** button, a **Drafts** card
+when there are any, and a **⚙** in the corner. All the setup (vault, folders, offline OCR)
+lives one tap in, behind the gear. A small dot on the gear says the vault still needs
+attention — nothing to save into yet, or a folder handle that lapsed after a browser restart.
+
 1. Open the site and add it to your home screen.
-2. **Download for offline use** once, on the home screen — the recognition engine plus the
-   language packs you picked, around 8 MB for the default English and French. After that
-   nothing needs the network again.
-3. **Connect vault** — pick your vault folder, or a subfolder of it. The choice is remembered.
-4. **New bottle** → photograph the label, or tap **Gallery** to use a picture you already took.
+2. Tap **⚙** → **Download for offline use** once — the recognition engine plus the language
+   packs you picked, around 8 MB for the default English and French. After that nothing needs
+   the network again.
+3. Still in Settings, **Connect vault** — pick your vault folder, or a subfolder of it. The
+   choice is remembered.
+4. Back on home, **New bottle** → photograph the label, or tap **Gallery** to use a picture
+   you already took.
 5. Drag the handles onto the label, set **Curve** by the preview, then **Read label**.
 6. Correct anything OCR got wrong, fill in price or rating if you like, optionally add a food
    photo, then **Save to vault**.
@@ -327,7 +334,7 @@ never offered as a target, since it would silently blank itself.
 
 ### Languages
 
-The home screen has chips for English, French, Italian, Spanish, Portuguese, German and
+The Settings screen (behind ⚙) has chips for English, French, Italian, Spanish, Portuguese, German and
 Georgian. All seven packs are in the repository, but only the ones you pick are downloaded for
 offline use, so the first download stays proportionate. Three at a time is the cap: each extra
 language slows recognition down.
@@ -342,9 +349,9 @@ usually fixed by re-cropping — check the handles are on the label's real edges
 flattened preview while you move the Curve slider until the lines of text read straight. The
 third is fixed by dragging the value into the right field.
 
-Android may ask you to re-confirm folder access after a restart; the home screen shows a
-**Reconnect vault** button when that happens. Choosing "Allow on every visit" in Chrome's
-permission prompt avoids the question.
+Android may ask you to re-confirm folder access after a restart; the gear grows a small dot
+and Settings shows a **Reconnect vault** button when that happens. Choosing "Allow on every
+visit" in Chrome's permission prompt avoids the question.
 
 ## Development
 

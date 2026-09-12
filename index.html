@@ -13,10 +13,35 @@
 </head>
 <body data-screen="home">
 
-<!-- ─── Home / vault status ─────────────────────────────────────────── -->
+<!-- ─── Home ─────────────────────────────────────────────────────────── -->
 <section class="screen" data-name="home">
   <header class="topbar">
     <h1>Label&nbsp;Scanner</h1>
+    <button class="btn-icon topbar-action" id="btn-settings" aria-label="Settings">
+      <span class="gear-badge" id="settings-badge" hidden></span>⚙
+    </button>
+  </header>
+
+  <div class="scroll">
+    <div class="card" id="drafts-card" hidden>
+      <div class="card-head">
+        <h2>Drafts</h2>
+      </div>
+      <p class="muted">Bottles you started but haven't sent to Obsidian yet. Tap to pick one up where you left off.</p>
+      <div id="drafts-list"></div>
+    </div>
+  </div>
+
+  <footer class="actions">
+    <button class="btn btn-primary btn-big" id="btn-new-bottle">New bottle</button>
+  </footer>
+</section>
+
+<!-- ─── Settings ────────────────────────────────────────────────────── -->
+<section class="screen" data-name="settings">
+  <header class="topbar">
+    <button class="btn-icon" id="btn-settings-back" aria-label="Back">‹</button>
+    <h1>Settings</h1>
   </header>
 
   <div class="scroll">
@@ -40,14 +65,6 @@
       </div>
 
       <button class="btn btn-quiet" id="btn-vault-mode">Use Obsidian's QuickAdd instead</button>
-    </div>
-
-    <div class="card" id="drafts-card" hidden>
-      <div class="card-head">
-        <h2>Drafts</h2>
-      </div>
-      <p class="muted">Bottles you started but haven't sent to Obsidian yet. Tap to pick one up where you left off.</p>
-      <div id="drafts-list"></div>
     </div>
 
     <details class="group" id="folders-card">
@@ -77,10 +94,6 @@
       <button class="btn btn-quiet" id="btn-cache-ocr" hidden>Download for offline use</button>
     </div>
   </div>
-
-  <footer class="actions">
-    <button class="btn btn-primary btn-big" id="btn-new-bottle">New bottle</button>
-  </footer>
 </section>
 
 <!-- ─── Capture ─────────────────────────────────────────────────────── -->

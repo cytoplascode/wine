@@ -568,6 +568,12 @@ async function renderVaultCard() {
     ? 'Use a folder instead'
     : "Use Obsidian's QuickAdd instead";
 
+  // The gear icon on the home screen carries a small dot when the vault
+  // still needs attention — a first-run user who hasn't set anything up,
+  // or a Chromium session whose permission has lapsed. Kept in step with
+  // whatever the vault card itself would say, so the two never disagree.
+  refreshSettingsBadge();
+
   if (mode === 'quickadd') {
     quickaddForm.insertAdjacentElement('afterend', vaultButton);
     const config = quickadd.getConfig();
@@ -592,6 +598,29 @@ async function renderVaultCard() {
   vaultStatus.insertAdjacentElement('afterend', vaultButton);
   const state = await vault.status();
   renderCard(vault.describe(state, vault.getVaultName()));
+}
+
+/**
+ * A dot on the gear when the app is not yet in a state where Save to
+ * vault would actually reach a vault. Two paths: QuickAdd mode needs a
+ * saved config, folder mode needs a granted directory handle. Anything
+ * else — no vault chosen, permission lapsed, browser without the API —
+ * is unresolved and gets the badge.
+ */
+async function refreshSettingsBadge() {
+  const badge = $('#settings-badge');
+  if (!badge) return;
+  let needsAttention = true;
+  try {
+    if (getMode() === 'quickadd') {
+      needsAttention = !quickadd.isConfigured();
+    } else {
+      needsAttention = (await vault.status()) !== 'granted';
+    }
+  } catch {
+    needsAttention = true;
+  }
+  badge.hidden = !needsAttention;
 }
 
 async function onVaultButton() {
@@ -647,7 +676,11 @@ $('#btn-save-folders').addEventListener('click', () => {
   toast(`Saved. Notes go to “${saved.notes}”, photos to “${saved.attachments}”.`);
 });
 
-onEnter('home', () => { renderVaultCard(); renderFoldersCard(); renderDraftsCard(); });
+/* Split by screen: home shows drafts + the gear's setup badge (which
+ * depends on vault status), settings shows the vault card, the folders
+ * card, and lets the OCR card refresh itself. */
+onEnter('home', () => { renderDraftsCard(); refreshSettingsBadge(); });
+onEnter('settings', () => { renderVaultCard(); renderFoldersCard(); });
 
 /* ── Offline OCR status ─────────────────────────────────────────────── */
 
@@ -761,6 +794,8 @@ renderLanguageChips();
 $('#btn-new-bottle').addEventListener('click', newBottle);
 $('#btn-another').addEventListener('click', newBottle);
 $('#btn-home').addEventListener('click', () => go('home'));
+$('#btn-settings').addEventListener('click', () => go('settings'));
+$('#btn-settings-back').addEventListener('click', goBack);
 $('#btn-capture-back').addEventListener('click', goBack);
 $('#btn-crop-back').addEventListener('click', goBack);
 $('#btn-crop-done').addEventListener('click', flattenAndReview);

@@ -41,11 +41,12 @@ body {
 
 .screen { display: none; }
 
-body[data-screen="home"]    .screen[data-name="home"],
-body[data-screen="capture"] .screen[data-name="capture"],
-body[data-screen="crop"]    .screen[data-name="crop"],
-body[data-screen="review"]  .screen[data-name="review"],
-body[data-screen="saved"]   .screen[data-name="saved"] {
+body[data-screen="home"]     .screen[data-name="home"],
+body[data-screen="settings"] .screen[data-name="settings"],
+body[data-screen="capture"]  .screen[data-name="capture"],
+body[data-screen="crop"]     .screen[data-name="crop"],
+body[data-screen="review"]   .screen[data-name="review"],
+body[data-screen="saved"]    .screen[data-name="saved"] {
   display: flex;
   flex-direction: column;
   height: 100dvh;
@@ -274,6 +275,24 @@ body[data-screen="review"] .scroll {
   font-size: 30px;
   line-height: 1;
   cursor: pointer;
+}
+
+.topbar-action {
+  margin-left: auto;         /* pushes the gear against the trailing edge */
+  margin-right: -10px;
+  font-size: 22px;
+  position: relative;
+}
+
+.gear-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--surface);
 }
 
 .shutter {

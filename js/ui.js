@@ -6,6 +6,7 @@ export const $ = (sel) => document.querySelector(sel);
 
 export const state = {
   labelBitmap: null,   // ImageBitmap straight from camera or gallery
+  labelBlob: null,     // that photo re-encoded — kept so a draft can persist it
   labelDate: null,     // when that photo was taken — today, or its EXIF date
   labelLocation: null, // { lat, lon } where it was taken — live GPS or EXIF
   labelCity: null,     // reverse-geocoded city (or town/village/…) for those coordinates
@@ -16,11 +17,13 @@ export const state = {
   ocrText: '',
   ocrLines: [],
   fields: {},
+  draftId: null,       // the row in IndexedDB the review screen is auto-saving into
 };
 
 export function resetCapture() {
   if (state.labelBitmap) state.labelBitmap.close();
   state.labelBitmap = null;
+  state.labelBlob = null;
   state.labelDate = null;
   state.labelLocation = null;
   state.labelCity = null;
@@ -31,6 +34,7 @@ export function resetCapture() {
   state.ocrText = '';
   state.ocrLines = [];
   state.fields = {};
+  state.draftId = null;
 }
 
 /* ── Screen routing ─────────────────────────────────────────────────── */

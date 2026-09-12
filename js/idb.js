@@ -1,13 +1,21 @@
-/* A very small IndexedDB key/value store.
+/* A very small IndexedDB wrapper.
  *
- * It exists for one job: remembering the vault's FileSystemDirectoryHandle
- * between visits. Handles are structured-cloneable, so IndexedDB can hold them
- * where localStorage (strings only) cannot.
+ * Two stores, in the same database:
+ *   - `handles`  the vault's FileSystemDirectoryHandle between visits;
+ *                keyed by a fixed string, structured-cloneable, holds one.
+ *   - `drafts`   in-progress bottles the user hasn't sent to Obsidian yet.
+ *                Photos live as Blobs (several MB each — localStorage would
+ *                not take them), each row keyed by its own draft ID.
+ *
+ * Bumping DB_VERSION triggers `onupgradeneeded` which creates any missing
+ * store; a phone that installed the app before `drafts` existed picks it
+ * up on next open without losing its saved handle.
  */
 
 const DB_NAME = 'label-scanner';
-const DB_VERSION = 1;
-const STORE = 'handles';
+const DB_VERSION = 2;
+const HANDLES = 'handles';
+const DRAFTS = 'drafts';
 
 let dbPromise = null;
 
@@ -17,9 +25,9 @@ function openDatabase() {
   dbPromise = new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onupgradeneeded = () => {
-      if (!request.result.objectStoreNames.contains(STORE)) {
-        request.result.createObjectStore(STORE);
-      }
+      const db = request.result;
+      if (!db.objectStoreNames.contains(HANDLES)) db.createObjectStore(HANDLES);
+      if (!db.objectStoreNames.contains(DRAFTS)) db.createObjectStore(DRAFTS);
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
@@ -28,15 +36,24 @@ function openDatabase() {
   return dbPromise;
 }
 
-function run(mode, operation) {
+function run(store, mode, operation) {
   return openDatabase().then((db) => new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE, mode);
-    const request = operation(transaction.objectStore(STORE));
+    const transaction = db.transaction(store, mode);
+    const request = operation(transaction.objectStore(store));
     transaction.oncomplete = () => resolve(request ? request.result : undefined);
     transaction.onerror = () => reject(transaction.error);
     transaction.onabort = () => reject(transaction.error);
   }));
 }
 
-export const idbGet = (key) => run('readonly', (store) => store.get(key));
-export const idbSet = (key, value) => run('readwrite', (store) => store.put(value, key));
+/* ── handles: the vault directory ──────────────────────────────────── */
+
+export const idbGet = (key) => run(HANDLES, 'readonly', (store) => store.get(key));
+export const idbSet = (key, value) => run(HANDLES, 'readwrite', (store) => store.put(value, key));
+
+/* ── drafts: bottles-in-progress ───────────────────────────────────── */
+
+export const draftPut = (id, value) => run(DRAFTS, 'readwrite', (store) => store.put(value, id));
+export const draftGet = (id) => run(DRAFTS, 'readonly', (store) => store.get(id));
+export const draftDelete = (id) => run(DRAFTS, 'readwrite', (store) => store.delete(id));
+export const draftAll = () => run(DRAFTS, 'readonly', (store) => store.getAll());

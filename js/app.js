@@ -18,20 +18,25 @@ import { readValues, patchIfEmpty } from './form.js';
 import { reverseGeocode } from './geocode.js';
 import { save, launchUri, PermissionNeeded } from './save.js';
 import {
+  putDraft, listDrafts, getDraft, removeDraft, newDraftId,
+} from './drafts.js';
+import {
   LANGUAGES, MAX_ACTIVE, getLanguages, setLanguages, toTesseractLangs, totalMegabytes,
 } from './languages.js';
 
 /* ── Photo handling ─────────────────────────────────────────────────── */
 
-async function handlePhoto(bitmap, mode, capturedOn, location) {
+async function handlePhoto(bitmap, mode, capturedOn, location, sourceBlob) {
   if (mode === 'food') {
     state.foodBlob = await bitmapToBlob(bitmap);
     bitmap.close();
+    scheduleDraftSave();
     go('review');
     return;
   }
   if (state.labelBitmap) state.labelBitmap.close();
   state.labelBitmap = bitmap;
+  state.labelBlob = sourceBlob || null;
   state.labelDate = capturedOn || null;
   state.labelLocation = location || null;
   state.cropPoints = null;
@@ -176,6 +181,7 @@ async function runOcr() {
     const { fields, auto } = parseLabel(result);
     state.fields = fields;
     setValues(withAutoContext({ ...emptyRecord(), ...fields }), [...auto, ...autoContextKeys()]);
+    scheduleDraftSave();
   } catch (err) {
     $('#raw-text').textContent = '';
     toast(`Could not read the label: ${err.message}`);
@@ -187,7 +193,203 @@ async function runOcr() {
 onEnter('review', () => {
   renderFoodThumb();
   runOcr();
+  scheduleDraftSave();
+  attachFormSaveListener();
 });
+
+/* ── Drafts ─────────────────────────────────────────────────────────── */
+
+/* A bottle is auto-saved to IndexedDB the moment it reaches review, then
+ * on every edit that follows, so leaving the app (a lock screen, a switch
+ * to Obsidian, "New bottle" on top of an unfinished one) never loses it.
+ * A successful send to the vault deletes the draft; the Drafts card on
+ * the home screen lists everything still pending. */
+
+// Debounce so a burst of form edits (typing into a field) collapses into
+// one write instead of racing IndexedDB on every keystroke.
+const DRAFT_SAVE_DEBOUNCE_MS = 400;
+let draftSaveTimer = null;
+let formSaveListenerAttached = false;
+
+function scheduleDraftSave() {
+  if (!state.flattened || !state.flattened.blob) return;
+  clearTimeout(draftSaveTimer);
+  draftSaveTimer = setTimeout(saveDraftNow, DRAFT_SAVE_DEBOUNCE_MS);
+}
+
+async function saveDraftNow() {
+  if (!state.flattened || !state.flattened.blob) return;
+  if (!state.draftId) state.draftId = newDraftId();
+
+  const record = readValues();
+  const snapshot = {
+    labelBlob: state.labelBlob,
+    flattenedBlob: state.flattened.blob,
+    foodBlob: state.foodBlob,
+    ocrText: state.ocrText,
+    ocrLines: state.ocrLines,
+    cropPoints: state.cropPoints,
+    labelDate: state.labelDate,
+    labelLocation: state.labelLocation,
+    labelCity: state.labelCity,
+    labelCountry: state.labelCountry,
+    fields: record,
+  };
+
+  try {
+    await putDraft(state.draftId, snapshot);
+    renderDraftsCard();
+  } catch (err) {
+    // Storage full, or a transient IDB error — nothing to surface loudly:
+    // the user is mid-review, and next edit will retry the save.
+    console.warn('Draft save failed:', err);
+  }
+}
+
+/** Listen to every form change so a typed field, a picked suggestion,
+ *  or a re-cropped label all get folded into the draft. Attached lazily
+ *  once, since the form's DOM lives across review re-entries. */
+function attachFormSaveListener() {
+  if (formSaveListenerAttached) return;
+  const form = $('#wine-form');
+  if (!form) return;
+  form.addEventListener('input', scheduleDraftSave);
+  formSaveListenerAttached = true;
+}
+
+/** Resume a draft: rebuild the review-screen state from an IndexedDB row
+ *  and jump to review. Skips OCR — the stored `ocrText` is already the
+ *  guard `runOcr` checks against, so the OCR pass sees "already done"
+ *  and moves on, saving several seconds and an engine warm-up. */
+async function resumeDraft(id) {
+  const draft = await getDraft(id);
+  if (!draft) return;
+
+  resetCapture();
+  state.draftId = id;
+  state.labelBlob = draft.labelBlob || null;
+  if (draft.labelBlob) {
+    // A source blob is only there if the draft was written by a build
+    // that stored one; older ones just have the flattened. Rebuild the
+    // bitmap so the pencil-to-recrop workflow still lands on the source.
+    try { state.labelBitmap = await createImageBitmap(draft.labelBlob); } catch {
+      // Corrupt blob or a browser mid-refresh — fall back to the flattened
+      // as the source. Crops from here will be crops of the flattened,
+      // which is a small regression but never a data loss.
+      state.labelBitmap = await createImageBitmap(draft.flattenedBlob);
+    }
+  } else {
+    state.labelBitmap = await createImageBitmap(draft.flattenedBlob);
+  }
+  state.flattened = { blob: draft.flattenedBlob, canvas: null };
+  state.foodBlob = draft.foodBlob || null;
+  state.ocrText = draft.ocrText || '';
+  state.ocrLines = draft.ocrLines || [];
+  state.cropPoints = draft.cropPoints || null;
+  state.labelDate = draft.labelDate || null;
+  state.labelLocation = draft.labelLocation || null;
+  state.labelCity = draft.labelCity || null;
+  state.labelCountry = draft.labelCountry || null;
+  state.fields = draft.fields || {};
+
+  // Point the review-screen thumbnail at the flattened image directly
+  // (runOcr won't run for this pass, so its usual side effect that sets
+  // the thumbnail via labelUrl doesn't fire).
+  if (labelUrl) URL.revokeObjectURL(labelUrl);
+  labelUrl = URL.createObjectURL(draft.flattenedBlob);
+  $('#thumb-label').src = labelUrl;
+
+  go('review');
+  // Restore the form after render — the setValues in the OCR path runs
+  // *before* our fields would otherwise get to the DOM; setting them here
+  // (with autoContextKeys marking the Drink * fields as guesses) matches
+  // exactly how the OCR flow leaves the form on a fresh capture.
+  setValues(withAutoContext(draft.fields || {}), autoContextKeys());
+}
+
+async function discardDraft(id) {
+  await removeDraft(id);
+  if (state.draftId === id) state.draftId = null;
+  renderDraftsCard();
+}
+
+/** Render the Drafts card on the home screen: hide it entirely when empty,
+ *  otherwise one row per draft with a resume button and a discard × . */
+async function renderDraftsCard() {
+  const card = $('#drafts-card');
+  const list = $('#drafts-list');
+  if (!card || !list) return;
+
+  let drafts;
+  try {
+    drafts = await listDrafts();
+  } catch {
+    drafts = [];
+  }
+  if (!drafts.length) {
+    card.hidden = true;
+    return;
+  }
+
+  card.hidden = false;
+  list.textContent = '';
+  for (const draft of drafts) {
+    list.append(renderDraftRow(draft));
+  }
+}
+
+function renderDraftRow(draft) {
+  const row = document.createElement('div');
+  row.className = 'draft-row';
+
+  const resume = document.createElement('button');
+  resume.type = 'button';
+  resume.className = 'draft-resume';
+  resume.append(nameLine(draft.title), whenLine(draft.updatedAt));
+  resume.addEventListener('click', () => resumeDraft(draft.id));
+
+  const discard = document.createElement('button');
+  discard.type = 'button';
+  discard.className = 'draft-discard';
+  discard.setAttribute('aria-label', `Discard draft ${draft.title}`);
+  discard.textContent = '×';
+  discard.addEventListener('click', async () => {
+    // A tap is cheap to undo (retake the photo) but not free — a confirm
+    // stops a slipped finger from erasing a bottle mid-edit.
+    if (confirm(`Discard the draft “${draft.title}”?`)) await discardDraft(draft.id);
+  });
+
+  row.append(resume, discard);
+  return row;
+}
+
+function nameLine(title) {
+  const span = document.createElement('span');
+  span.className = 'draft-name';
+  span.textContent = title;
+  return span;
+}
+
+function whenLine(timestamp) {
+  const span = document.createElement('span');
+  span.className = 'draft-when';
+  span.textContent = relativeTime(timestamp);
+  return span;
+}
+
+/** A short "3 minutes ago" / "yesterday" without loading a whole date
+ *  library — the drafts list is the only place this is needed and its
+ *  precision doesn't have to be exact, only readable at a glance. */
+function relativeTime(then) {
+  const seconds = Math.max(0, (Date.now() - then) / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min${minutes === 1 ? '' : 's'} ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const days = Math.round(hours / 24);
+  return days === 1 ? 'yesterday' : `${days} days ago`;
+}
 
 /* ── Food photo ─────────────────────────────────────────────────────── */
 
@@ -268,6 +470,13 @@ function renderUnsent(result) {
     try {
       await navigator.clipboard.writeText(result.payload);
       launchUri(result.uri);
+      // The retry landed — the draft this bottle came from can go now,
+      // same as if the first send had succeeded.
+      if (state.draftId) {
+        const id = state.draftId;
+        state.draftId = null;
+        await removeDraft(id).catch(() => {});
+      }
     } catch (err) {
       toast(`Could not send it: ${err.message}`);
     } finally {
@@ -300,6 +509,15 @@ async function saveBottle() {
     $('#saved-path').textContent = result.path;
     if (result.reduced) toast('A photo was compressed a little to fit the clipboard.');
     renderUnsent(result);
+    // Drop the draft only once the bottle really left — a refused clipboard
+    // (sent === false) still has the parcel in memory and offers a retry,
+    // so the draft has to stay until either that retry succeeds or the
+    // user discards it by hand from the home screen.
+    if (state.draftId && result.sent !== false) {
+      const id = state.draftId;
+      state.draftId = null;
+      await removeDraft(id).catch(() => {});
+    }
     go('saved');
   } catch (err) {
     toast(err instanceof PermissionNeeded
@@ -429,7 +647,7 @@ $('#btn-save-folders').addEventListener('click', () => {
   toast(`Saved. Notes go to “${saved.notes}”, photos to “${saved.attachments}”.`);
 });
 
-onEnter('home', () => { renderVaultCard(); renderFoldersCard(); });
+onEnter('home', () => { renderVaultCard(); renderFoldersCard(); renderDraftsCard(); });
 
 /* ── Offline OCR status ─────────────────────────────────────────────── */
 

@@ -246,6 +246,22 @@ keeps the space either would otherwise hold onto. The phone's back button steps 
 the flow throughout — review to crop, crop to the camera, camera to home — and only leaves
 the app from the home screen.
 
+### Drafts
+
+A bottle is auto-saved to the phone the moment the crop is read, and again on every edit that
+follows, so leaving the app mid-flow — a lock screen, a switch to Obsidian, tapping New bottle
+on top of an unfinished one — never loses it. Every edit updates the same draft; only sending
+the note to the vault (or the retry succeeding, after a refused clipboard) clears it out.
+
+Anything still in progress shows up in a **Drafts** card on the home screen, newest first. Tap
+a draft to pick up exactly where you left off — the photo, the crop, the OCR text and every
+form value are all restored, including a re-crop via the pencil since the source photo is kept
+alongside the flattened one. Tap the **×** to discard a draft (with a confirm — a slipped
+finger shouldn't lose a bottle mid-edit).
+
+Drafts live in IndexedDB, alongside the vault handle. Photos and all — several megabytes each,
+which is why localStorage wouldn't fit them. Nothing about them ever leaves the phone.
+
 ### The curve slider
 
 A label is wrapped round a bottle, so correcting perspective is not enough — the surface
@@ -335,7 +351,7 @@ permission prompt avoids the question.
 No build step and no runtime dependencies — it is plain ES modules served as files.
 
 ```sh
-npm test          # warp and unwrap, parser, note writer, vault states, languages, routing, EXIF, geocoding
+npm test          # warp/unwrap, parser, note writer, vault states, languages, routing, EXIF, geocoding, drafts
 npm run serve     # http://localhost:8000
 ```
 
@@ -343,7 +359,7 @@ Camera capture and the directory picker need a secure context, so `localhost` wo
 LAN IP does not.
 
 The pure modules — `warp.js`, `parse.js`, `note.js`, `languages.js`, `nav.js`, `exif.js`,
-`geocode.js` and the vault state machine — carry the tests. `nav.js` holds the screen stack
+`geocode.js`, `drafts.js` and the vault state machine — carry the tests. `nav.js` holds the screen stack
 behind the back button and returns a plan rather than touching the History API, which is what
 makes its awkward cases — returning to a screen already visited, a back press landing outside
 the stack — testable at all. `exif.js` parses the JPEG/TIFF byte layout directly rather than

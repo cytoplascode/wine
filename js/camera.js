@@ -10,7 +10,7 @@
  * photo shares the same moment and place, so there is nothing new to read.
  */
 
-import { $, toast } from './ui.js';
+import { $, toast, canvasToBlob } from './ui.js';
 import { readCaptureDate, readCaptureLocation, localIsoDate } from './exif.js';
 
 const TITLES = {
@@ -86,11 +86,15 @@ async function takePhoto() {
   canvas.height = video.videoHeight;
   canvas.getContext('2d').drawImage(video, 0, 0);
 
-  const [bitmap, location] = await Promise.all([
+  // Encode a JPEG copy alongside the bitmap so a draft can persist the
+  // source photo — ImageBitmap itself is not structured-cloneable and the
+  // canvas gets thrown away as soon as this handler returns.
+  const [bitmap, blob, location] = await Promise.all([
     createImageBitmap(canvas),
+    mode === 'food' ? null : canvasToBlob(canvas),
     mode === 'food' ? null : currentLocation(),
   ]);
-  onPhoto(bitmap, mode, localIsoDate(), location);
+  onPhoto(bitmap, mode, localIsoDate(), location, blob);
 }
 
 async function importFromGallery(event) {
@@ -106,7 +110,9 @@ async function importFromGallery(event) {
       readCaptureDate(file),
       mode === 'food' ? null : readCaptureLocation(file),
     ]);
-    onPhoto(bitmap, mode, capturedOn || localIsoDate(), location);
+    // The gallery-picked File is already a serializable Blob — hand it
+    // through unchanged so a draft can store it without a re-encode.
+    onPhoto(bitmap, mode, capturedOn || localIsoDate(), location, file);
   } catch (err) {
     toast(`That image could not be opened: ${err.message}`);
   }

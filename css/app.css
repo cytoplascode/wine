@@ -108,6 +108,11 @@ body[data-screen="review"] .scroll {
 
 .actions .actions-row .btn { flex: 1; }
 
+/* The primary "Read label" button carries the sentence — a two-word label at
+   base font size doesn't fit in a third of a phone width, so give it double
+   share while the two quiet buttons keep single. */
+.actions .actions-row .btn-primary { flex: 2; }
+
 .hint {
   margin: 0 2px 2px;
   font-size: 13px;
@@ -240,6 +245,14 @@ body[data-screen="review"] .scroll {
 .btn-primary:active { background: var(--accent-press); }
 .btn-big { min-height: 58px; font-size: 17px; }
 .btn-quiet { background: transparent; }
+
+/* Pressed state for a toggle-shaped .btn-quiet — the Snap toggle on the crop
+   screen. Matches the chips' visual language so on/off reads at a glance. */
+.btn-quiet[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
 
 /* Floats over the scrolled content instead of holding a footer bar down, so
    review keeps the space that bar used to take. */

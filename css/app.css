@@ -792,8 +792,9 @@ body.dragging-field { user-select: none; -webkit-user-select: none; }
 
 .draft-resume {
   flex: 1;
+  min-width: 0;
   min-height: var(--tap);
-  padding: 8px 12px;
+  padding: 6px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
@@ -801,11 +802,34 @@ body.dragging-field { user-select: none; -webkit-user-select: none; }
   text-align: left;
   cursor: pointer;
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 10px;
 }
 
-.draft-name { font-size: 15px; font-weight: 500; }
+.draft-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--bg);
+}
+.draft-thumb-empty { visibility: hidden; }
+
+.draft-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.draft-name {
+  font-size: 15px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .draft-when { font-size: 12px; color: var(--muted); }
 
 .draft-discard {

@@ -470,7 +470,7 @@ function renderDraftRow(draft) {
   const resume = document.createElement('button');
   resume.type = 'button';
   resume.className = 'draft-resume';
-  resume.append(nameLine(draft.title), whenLine(draft.updatedAt));
+  resume.append(thumbnail(draft.flattenedBlob), textColumn(draft));
   resume.addEventListener('click', () => resumeDraft(draft.id));
 
   const discard = document.createElement('button');
@@ -488,6 +488,13 @@ function renderDraftRow(draft) {
   return row;
 }
 
+function textColumn(draft) {
+  const col = document.createElement('span');
+  col.className = 'draft-text';
+  col.append(nameLine(draft.title), whenLine(draft.updatedAt));
+  return col;
+}
+
 function nameLine(title) {
   const span = document.createElement('span');
   span.className = 'draft-name';
@@ -500,6 +507,29 @@ function whenLine(timestamp) {
   span.className = 'draft-when';
   span.textContent = relativeTime(timestamp);
   return span;
+}
+
+/* A small preview of the flattened label so the row's identity is obvious
+ * even before its title is read. Two hands to release: the object URL
+ * (revoked when the image detaches, so a rebuilt list doesn't leak N URLs
+ * per redraw), and a fallback when the draft has no flattened blob for any
+ * reason — a plain grape emoji rather than a broken-image icon. */
+function thumbnail(blob) {
+  const img = document.createElement('img');
+  img.className = 'draft-thumb';
+  img.alt = '';
+  if (!blob) {
+    img.classList.add('draft-thumb-empty');
+    img.setAttribute('aria-hidden', 'true');
+    return img;
+  }
+  const url = URL.createObjectURL(blob);
+  img.src = url;
+  // Revoke once the browser is finished with the URL — the load event fires
+  // after the image is decoded, which is when the URL is no longer needed.
+  img.addEventListener('load', () => URL.revokeObjectURL(url), { once: true });
+  img.addEventListener('error', () => URL.revokeObjectURL(url), { once: true });
+  return img;
 }
 
 /** A short "3 minutes ago" / "yesterday" without loading a whole date

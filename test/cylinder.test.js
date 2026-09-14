@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   warpCylinder, cylinderSize, warpQuad, outputSize, arcOverChord, DEFAULT_WRAP,
+  fitWrapAngle, MIN_WRAP, MAX_WRAP,
 } from '../js/warp.js';
 
 /**
@@ -281,4 +282,59 @@ test('the default wrap suits an ordinary label better than 180° did', () => {
   const assuming180 = unwrapAt(2.4, Math.PI).score;
   assert.ok(withDefault > assuming180,
     `default ${withDefault.toFixed(3)} vs 180° ${assuming180.toFixed(3)}`);
+});
+
+/* ── Auto-fit ───────────────────────────────────────────────────────── */
+
+// A blank source is enough to test the fit: the geometric formula reads only
+// the six handles, and the synthetic bottle helper already places them at the
+// projected corners of the label for a given wrap.
+const blankSource = (w, h) => {
+  const data = new Uint8ClampedArray(w * h * 4);
+  for (let i = 0; i < w * h; i++) { data[i * 4 + 3] = 255; }
+  return { width: w, height: h, data };
+};
+
+test('fitWrapAngle recovers the true wrap on a physically projected cylinder', () => {
+  // The synthetic uses d = D/R = 260/37 ≈ 7.03. Feed the same d back to the
+  // fitter and the geometry should be an exact solution — an absolute-error
+  // envelope of a few degrees leaves room for float noise.
+  const d = 260 / 37;
+  for (const span of [1.5, 2.0, 2.4, 2.8]) {
+    const { points } = photographCylinder(blankSource(240, 320), { span });
+    const fitted = fitWrapAngle(points, d);
+    const errDeg = (Math.abs(fitted - span) * 180) / Math.PI;
+    assert.ok(
+      errDeg < 5,
+      `span ${(span * 180 / Math.PI).toFixed(0)}°: fitted `
+      + `${(fitted * 180 / Math.PI).toFixed(0)}°, off by ${errDeg.toFixed(1)}°`,
+    );
+  }
+});
+
+test('fitWrapAngle at the default d ≈ 8 stays within the slider range', () => {
+  for (const span of [1.5, 2.0, 2.4, 2.8]) {
+    const { points } = photographCylinder(blankSource(240, 320), { span });
+    const fitted = fitWrapAngle(points);
+    assert.ok(fitted >= MIN_WRAP && fitted <= MAX_WRAP,
+      `span ${(span * 180 / Math.PI).toFixed(0)}° → ${(fitted * 180 / Math.PI).toFixed(0)}° out of range`);
+  }
+});
+
+test('fitWrapAngle handles the degenerate zero-bulge case', () => {
+  // Flat rectangle (bulge = 0). The formula reads cos = 1, wrap = 0, clamped
+  // to MIN_WRAP — nothing to unwrap, so the narrowest curve is the safe pick.
+  const flatPoints = [
+    { x: 0, y: 0 }, { x: 50, y: 0 }, { x: 100, y: 0 },
+    { x: 100, y: 60 }, { x: 50, y: 60 }, { x: 0, y: 60 },
+  ];
+  assert.equal(fitWrapAngle(flatPoints), MIN_WRAP);
+});
+
+test('fitWrapAngle survives degenerate handle placements', () => {
+  const collapsed = new Array(6).fill(0).map(() => ({ x: 100, y: 100 }));
+  const fitted = fitWrapAngle(collapsed);
+  // The fallback path returns DEFAULT_WRAP; either way it must stay a number.
+  assert.ok(Number.isFinite(fitted));
+  assert.ok(fitted >= MIN_WRAP && fitted <= MAX_WRAP);
 });

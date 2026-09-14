@@ -9,7 +9,8 @@
 
 import { $, canvasToBlob } from './ui.js';
 import {
-  cylinderSize, warpCylinder, edgeArc, MAX_SIDE, DEFAULT_WRAP,
+  cylinderSize, warpCylinder, edgeArc, fitWrapAngle,
+  MAX_SIDE, DEFAULT_WRAP, MIN_WRAP, MAX_WRAP,
 } from './warp.js';
 
 const HANDLE_RADIUS = 13;   // CSS px — drawn size
@@ -63,6 +64,10 @@ export function showImage(nextBitmap, saved) {
   points = saved || defaultPoints();
   buildPreviewSource();
   layout();
+  // Seed the wrap slider from the handles — same shape whether opened on a
+  // fresh capture or a resumed draft. Drafts do not currently persist the
+  // slider position, so the fit is the best guess either way.
+  autoFitWrap();
   draw();
   drawPreview();
 }
@@ -324,6 +329,34 @@ function onPointerUp(event) {
   dragging = -1;
   $('#crop-loupe').hidden = true;
   try { event.target.releasePointerCapture(event.pointerId); } catch { /* already gone */ }
+  // Every handle release changes what the fitter would say — the label's own
+  // text tells the fitter where to put the slider. Runs on pointer-up rather
+  // than pointer-move so the drag itself never feels heavy.
+  autoFitWrap();
+}
+
+/**
+ * Ask the fitter where the wrap slider should be for the current handles, and
+ * move it there. Silent on failure — nothing about a bad fit should stop the
+ * user from placing a handle.
+ */
+function autoFitWrap() {
+  if (!bitmap || !points) return;
+  let fitted;
+  try {
+    fitted = fitWrapAngle(points);
+  } catch {
+    return;
+  }
+  // fitWrapAngle already clamps to [MIN_WRAP, MAX_WRAP]; keep the guard local
+  // in case future callers pass tighter candidate ranges.
+  fitted = Math.max(MIN_WRAP, Math.min(MAX_WRAP, fitted));
+  if (Math.abs(fitted - wrap) < 1e-6) return;
+  wrap = fitted;
+  const slider = $('#wrap-slider');
+  slider.value = String(Math.round((wrap * 180) / Math.PI));
+  renderWrap();
+  drawPreview();
 }
 
 const EDGES = [[TM, TL, TR], [BM, BL, BR]];

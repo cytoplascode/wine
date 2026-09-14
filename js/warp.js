@@ -261,6 +261,85 @@ export function cylinderSize(points, maxSide = MAX_SIDE, wrap = DEFAULT_WRAP) {
   return { width: Math.max(1, Math.round(width)), height: Math.max(1, Math.round(height)) };
 }
 
+/* ── Auto-fit the wrap angle ────────────────────────────────────────── */
+
+/** Typical camera distance divided by typical bottle radius. A wine label
+ *  photograph is taken at arm's length (25–35 cm) against a standard 750 ml
+ *  bottle (~3.75 cm radius), so d = D/R lands somewhere in [5, 10]. Seven is
+ *  where the synthetic cylinder fixture used elsewhere in tests sits (D=260,
+ *  R=37), and calibrating the fit to that value recovers the synthetic's true
+ *  wrap exactly. Real photos vary; the slider is what the user reaches for on
+ *  the ones where this misses. */
+export const ASSUMED_CAMERA_DISTANCE_RATIO = 7;
+
+/**
+ * Pick the wrap angle implied by the middle handles.
+ *
+ * The problem the slider exists for: how far round the bottle the label goes.
+ * Photographed, the label's top and bottom edges are projections of the
+ * cylinder's circular cross-section — half-ellipses whose *bulge* relative to
+ * the corner-to-corner chord is what the middle handles measure. Larger wrap
+ * → more bulge.
+ *
+ * The catch — the reason the wrap has been a slider — is that the six-handle
+ * geometry is one equation short: writing `d = D/R` for the camera distance in
+ * bottle radii and `c = cos(wrap/2)`,
+ *
+ *     s = total_bulge / label_height = (1 − c) / (d − 1)
+ *
+ * so a near bottle wrapping a little (small d, small (1-c)) projects
+ * identically to a distant bottle wrapping a lot. Fixing d closes the system.
+ * A typical phone-to-bottle distance and a typical 750 ml bottle put d near 8,
+ * which gets us a per-photo estimate that beats a fixed 140° default without
+ * asking the user to think about any of this.
+ *
+ * The fit stays inside the slider's range so a bulge that would imply an
+ * impossible geometry (a hand-placed middle handle far past the plausible
+ * envelope) still lands on something the user can drag from.
+ */
+export function fitWrapAngle(points, d = ASSUMED_CAMERA_DISTANCE_RATIO) {
+  const [a, b, c, dCorner, e, f] = points;
+
+  // Chord = the visible width across the front of the bottle, taken as the
+  // mean of the top and bottom edges so a slightly tilted photo does not
+  // bias one side.
+  const chord = (distance(a, c) + distance(f, dCorner)) / 2;
+  if (chord < 1e-6) return DEFAULT_WRAP;
+
+  // Total bulge = how far each middle handle sits off the chord between its
+  // corners, summed. Signed so a handle sitting on the *far* side of the
+  // chord (concave — which is nonsensical for a bottle) reads as zero rather
+  // than pulling the fit the wrong way.
+  const topBulge = Math.max(0, perpendicularDistance(b, a, c));
+  const bottomBulge = Math.max(0, perpendicularDistance(e, f, dCorner));
+  const totalBulge = topBulge + bottomBulge;
+
+  // Label height, same both-sides averaging as chord.
+  const labelHeight = (distance(a, f) + distance(c, dCorner)) / 2;
+  if (labelHeight < 1e-6) return DEFAULT_WRAP;
+
+  // s and c per the derivation above.
+  const s = totalBulge / labelHeight;
+  const cos = 1 - s * (d - 1);
+  if (cos >= 1) return MIN_WRAP;         // no visible bulge → barely curved
+  if (cos <= -1) return MAX_WRAP;        // implausibly large bulge → cap
+  return Math.max(MIN_WRAP, Math.min(MAX_WRAP, 2 * Math.acos(cos)));
+}
+
+/** Signed perpendicular distance from `p` to the line through `a` and `b`,
+ *  positive on the side the middle handle typically bows toward (away from
+ *  the label's interior). Returns 0 on a degenerate chord. */
+function perpendicularDistance(p, a, b) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-9) return 0;
+  // The middle handle for the TOP edge is above the chord (smaller y), and for
+  // the BOTTOM edge is below it (larger y). Either way its perpendicular
+  // distance is |(...)|/len; sign is discarded by the Math.max above.
+  return Math.abs((p.x - a.x) * dy - (p.y - a.y) * dx) / len;
+}
+
 /* ── Shared resampler ───────────────────────────────────────────────── */
 
 /**

@@ -15,6 +15,7 @@ import { readCaptureDate, readCaptureLocation, localIsoDate } from './exif.js';
 
 const TITLES = {
   label: 'Photograph the label',
+  back: 'Photograph the back label',
   food: 'Photograph the food',
 };
 

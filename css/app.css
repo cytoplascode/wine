@@ -434,8 +434,8 @@ body[data-screen="review"] .scroll {
 
 .thumbs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
   margin-bottom: 18px;
 }
 
@@ -451,7 +451,7 @@ body[data-screen="review"] .scroll {
 .thumb img {
   display: block;
   width: 100%;
-  height: 180px;
+  height: 150px;
   object-fit: contain;
   background: #000;
   cursor: zoom-in;

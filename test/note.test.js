@@ -10,6 +10,7 @@ import {
   buildNote,
   noteFilename,
   labelFilename,
+  backLabelFilename,
   foodFilename,
 } from '../js/note.js';
 
@@ -175,10 +176,11 @@ test('a free name is used as it stands', async () => {
   assert.equal(await uniqueBasename('Free name', async () => false), 'Free name');
 });
 
-test('the three filenames share one basename', () => {
+test('the four filenames share one basename', () => {
   const base = 'Penfolds - 2016';
   assert.equal(noteFilename(base), 'Penfolds - 2016.md');
   assert.equal(labelFilename(base), 'Penfolds - 2016.jpg');
+  assert.equal(backLabelFilename(base), 'Penfolds - 2016 - back.jpg');
   assert.equal(foodFilename(base), 'Penfolds - 2016 - food.jpg');
 });
 
@@ -188,6 +190,7 @@ test('the body carries the headings and inline Dataview fields', () => {
   const note = buildNote({
     record: { ...filled(), tastingNote: 'Dusty, long finish.' },
     basename: 'Château La Pompe - Cuvée Saint-Julien - 2018',
+    hasBack: true,
     hasFood: true,
     ocrText: 'CHATEAU LA POMPE\n2018',
   });
@@ -195,6 +198,7 @@ test('the body carries the headings and inline Dataview fields', () => {
   assert.ok(note.startsWith('---\nfileClass: Wine\n'));
   assert.match(note, /\n## Tasting note\nDusty, long finish\.\n/);
   assert.match(note, /\n## Label\nLabel:: !\[\[Château La Pompe - Cuvée Saint-Julien - 2018\.jpg\]\]\n/);
+  assert.match(note, /\n## Back label\nBack label:: !\[\[Château La Pompe - Cuvée Saint-Julien - 2018 - back\.jpg\]\]\n/);
   assert.match(note, /\n## Food\nFood:: !\[\[Château La Pompe - Cuvée Saint-Julien - 2018 - food\.jpg\]\]\n/);
   assert.match(note, /%%\n[\s\S]*CHATEAU LA POMPE[\s\S]*%%/);
 });
@@ -202,6 +206,11 @@ test('the body carries the headings and inline Dataview fields', () => {
 test('without a food photo the Food field is left empty for later', () => {
   const note = buildNote({ record: emptyRecord(), basename: 'X', hasFood: false });
   assert.match(note, /\n## Food\nFood::\n/);
+});
+
+test('without a back label the Back label field is left empty for later', () => {
+  const note = buildNote({ record: emptyRecord(), basename: 'X', hasBack: false });
+  assert.match(note, /\n## Back label\nBack label::\n/);
 });
 
 test('with nothing recognised there is no comment block', () => {
@@ -220,6 +229,9 @@ ${TEMPLATE_FRONTMATTER}
 
 ## Label
 Label:: ![[Untitled wine.jpg]]
+
+## Back label
+Back label::
 
 ## Food
 Food::

@@ -13,6 +13,7 @@ import {
   noteFilename,
   labelFilename,
   foodFilename,
+  backLabelFilename,
 } from './note.js';
 
 export class PermissionNeeded extends Error {
@@ -27,15 +28,15 @@ export class PermissionNeeded extends Error {
  * Returns `{ mode: 'vault' | 'download', path }` for the folder and download
  * paths, or `{ mode: 'quickadd', path, sent, … }` — see saveViaQuickAdd.
  */
-export async function save({ record, labelBlob, foodBlob, ocrText }) {
+export async function save({ record, labelBlob, backLabelBlob, foodBlob, ocrText }) {
   if (getMode() === 'quickadd' && quickadd.isConfigured()) {
-    return saveViaQuickAdd({ record, labelBlob, foodBlob, ocrText });
+    return saveViaQuickAdd({ record, labelBlob, backLabelBlob, foodBlob, ocrText });
   }
 
   const status = await vault.status();
 
   if (status === 'unsupported' || status === 'none') {
-    return download({ record, labelBlob, foodBlob, ocrText });
+    return download({ record, labelBlob, backLabelBlob, foodBlob, ocrText });
   }
   // Re-requesting access needs a user gesture, so this hands the decision back
   // to the caller rather than trying and silently failing.
@@ -52,9 +53,12 @@ export async function save({ record, labelBlob, foodBlob, ocrText }) {
     (candidate) => vault.fileExists(directory, noteFilename(candidate)),
   );
 
-  const markdown = buildNote({ record, basename, hasFood: Boolean(foodBlob), ocrText });
+  const markdown = buildNote({
+    record, basename, hasBack: Boolean(backLabelBlob), hasFood: Boolean(foodBlob), ocrText,
+  });
 
   await vault.writeFile(attachmentsDirectory, labelFilename(basename), labelBlob);
+  if (backLabelBlob) await vault.writeFile(attachmentsDirectory, backLabelFilename(basename), backLabelBlob);
   if (foodBlob) await vault.writeFile(attachmentsDirectory, foodFilename(basename), foodBlob);
   // The note goes last, so a link can never point at an image that is not there.
   await vault.writeFile(directory, noteFilename(basename), markdown);
@@ -78,14 +82,17 @@ export async function save({ record, labelBlob, foodBlob, ocrText }) {
  * expired, so the result says whether it landed; the caller offers a retry
  * rather than leaving the bottle half-sent.
  */
-async function saveViaQuickAdd({ record, labelBlob, foodBlob, ocrText }) {
+async function saveViaQuickAdd({ record, labelBlob, backLabelBlob, foodBlob, ocrText }) {
   const { notes: notesFolder, attachments: attachmentsFolder } = getFolders();
   const config = quickadd.getConfig();
   const basename = noteBasename(record);
-  const markdown = buildNote({ record, basename, hasFood: Boolean(foodBlob), ocrText });
+  const markdown = buildNote({
+    record, basename, hasBack: Boolean(backLabelBlob), hasFood: Boolean(foodBlob), ocrText,
+  });
   const notePath = `${notesFolder}/${noteFilename(basename)}`;
 
   const blobs = [{ path: `${attachmentsFolder}/${labelFilename(basename)}`, blob: labelBlob }];
+  if (backLabelBlob) blobs.push({ path: `${attachmentsFolder}/${backLabelFilename(basename)}`, blob: backLabelBlob });
   if (foodBlob) blobs.push({ path: `${attachmentsFolder}/${foodFilename(basename)}`, blob: foodBlob });
 
   const share = Math.floor((CLIPBOARD_BUDGET - markdown.length) / blobs.length);
@@ -150,12 +157,15 @@ async function usableBasename(directory, preferred) {
 }
 
 /** Fallback for browsers without the File System Access API. */
-function download({ record, labelBlob, foodBlob, ocrText }) {
+function download({ record, labelBlob, backLabelBlob, foodBlob, ocrText }) {
   const basename = noteBasename(record);
-  const markdown = buildNote({ record, basename, hasFood: Boolean(foodBlob), ocrText });
+  const markdown = buildNote({
+    record, basename, hasBack: Boolean(backLabelBlob), hasFood: Boolean(foodBlob), ocrText,
+  });
 
   saveBlob(new Blob([markdown], { type: 'text/markdown' }), noteFilename(basename));
   saveBlob(labelBlob, labelFilename(basename));
+  if (backLabelBlob) saveBlob(backLabelBlob, backLabelFilename(basename));
   if (foodBlob) saveBlob(foodBlob, foodFilename(basename));
 
   return { mode: 'download', path: noteFilename(basename) };

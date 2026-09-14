@@ -84,7 +84,7 @@ export function buildFrontmatter(record) {
  * is invisible in reading view and in Bases, but it is there when a guess turns
  * out to be wrong.
  */
-export function buildNote({ record, basename, hasFood = false, ocrText = '' }) {
+export function buildNote({ record, basename, hasBack = false, hasFood = false, ocrText = '' }) {
   const parts = [
     '---',
     buildFrontmatter(record),
@@ -95,6 +95,9 @@ export function buildNote({ record, basename, hasFood = false, ocrText = '' }) {
     '',
     '## Label',
     `Label:: ![[${basename}.jpg]]`,
+    '',
+    '## Back label',
+    hasBack ? `Back label:: ![[${basename} - back.jpg]]` : 'Back label::',
     '',
     '## Food',
     hasFood ? `Food:: ![[${basename} - food.jpg]]` : 'Food::',
@@ -117,5 +120,6 @@ export function buildNote({ record, basename, hasFood = false, ocrText = '' }) {
 }
 
 export const labelFilename = (basename) => `${basename}.jpg`;
+export const backLabelFilename = (basename) => `${basename} - back.jpg`;
 export const foodFilename = (basename) => `${basename} - food.jpg`;
 export const noteFilename = (basename) => `${basename}.md`;

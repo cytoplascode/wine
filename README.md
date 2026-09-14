@@ -56,6 +56,9 @@ Drink venue:
 ## Label
 Label:: ![[Domaine Ponsot - Clos de la Roche - 2018.jpg]]
 
+## Back label
+Back label:: ![[Domaine Ponsot - Clos de la Roche - 2018 - back.jpg]]
+
 ## Food
 Food:: ![[Domaine Ponsot - Clos de la Roche - 2018 - food.jpg]]
 ```
@@ -65,6 +68,7 @@ By default, files land in a `wines/` folder inside the directory you connect:
 ```
 wines/Domaine Ponsot - Clos de la Roche - 2018.md
 wines/Domaine Ponsot - Clos de la Roche - 2018.jpg
+wines/Domaine Ponsot - Clos de la Roche - 2018 - back.jpg   (optional)
 wines/Domaine Ponsot - Clos de la Roche - 2018 - food.jpg   (optional)
 ```
 
@@ -240,7 +244,8 @@ attention — nothing to save into yet, or a folder handle that lapsed after a b
 4. Back on home, **New bottle** → photograph the label, or tap **Gallery** to use a picture
    you already took.
 5. Drag the handles onto the label, set **Curve** by the preview, then **Read label**.
-6. Correct anything OCR got wrong, fill in price or rating if you like, optionally add a food
+6. Correct anything OCR got wrong, fill in price or rating if you like, optionally add a back
+   label photo (its OCR fills any field still blank — varieties, ABV, importer) and a food
    photo, then **Save to vault**.
 
 Tap either photo on the review screen to fill the screen with it, which is the quickest way

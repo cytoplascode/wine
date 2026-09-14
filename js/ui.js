@@ -17,11 +17,24 @@ export const state = {
   ocrText: '',
   ocrLines: [],
   fields: {},
+  /* The back label is optional and rides through the same crop/warp/OCR
+   * pipeline as the front, so it needs its own parallel slots for the
+   * ImageBitmap, the source Blob, the six crop handles, and the flattened
+   * result. `cropTarget` says which side the crop screen is currently
+   * editing — see app.js's flattenAndReview. */
+  backLabelBitmap: null,
+  backLabelBlob: null,
+  backCropPoints: null,
+  backFlattened: null,
+  backOcrText: '',
+  backOcrLines: [],
+  cropTarget: 'front',
   draftId: null,       // the row in IndexedDB the review screen is auto-saving into
 };
 
 export function resetCapture() {
   if (state.labelBitmap) state.labelBitmap.close();
+  if (state.backLabelBitmap) state.backLabelBitmap.close();
   state.labelBitmap = null;
   state.labelBlob = null;
   state.labelDate = null;
@@ -34,6 +47,13 @@ export function resetCapture() {
   state.ocrText = '';
   state.ocrLines = [];
   state.fields = {};
+  state.backLabelBitmap = null;
+  state.backLabelBlob = null;
+  state.backCropPoints = null;
+  state.backFlattened = null;
+  state.backOcrText = '';
+  state.backOcrLines = [];
+  state.cropTarget = 'front';
   state.draftId = null;
 }
 

@@ -34,12 +34,26 @@ async function handlePhoto(bitmap, mode, capturedOn, location, sourceBlob) {
     go('review');
     return;
   }
+  if (mode === 'back') {
+    // Back label rides through the same crop/warp/OCR pipeline as the
+    // front — same curve, same handles — so it hands off to the crop
+    // screen too, just tagged so the crop-done step lands the flattened
+    // output in its own slot instead of clobbering the front's.
+    if (state.backLabelBitmap) state.backLabelBitmap.close();
+    state.backLabelBitmap = bitmap;
+    state.backLabelBlob = sourceBlob || null;
+    state.backCropPoints = null;
+    state.cropTarget = 'back';
+    go('crop', 'back');
+    return;
+  }
   if (state.labelBitmap) state.labelBitmap.close();
   state.labelBitmap = bitmap;
   state.labelBlob = sourceBlob || null;
   state.labelDate = capturedOn || null;
   state.labelLocation = location || null;
   state.cropPoints = null;
+  state.cropTarget = 'front';
   go('crop');
 }
 
@@ -47,7 +61,17 @@ async function handlePhoto(bitmap, mode, capturedOn, location, sourceBlob) {
 
 onEnter('capture', (mode) => startCapture(mode || 'label'));
 onLeave('capture', stopCapture);
-onEnter('crop', () => crop.showImage(state.labelBitmap, state.cropPoints));
+onEnter('crop', (arg) => {
+  // `arg` says which label the crop screen was opened for; state.cropTarget
+  // is set to match by the caller so the crop-done step knows where to
+  // land the flattened output.
+  const isBack = arg === 'back' || arg === 'back-edit';
+  state.cropTarget = isBack ? 'back' : 'front';
+  crop.showImage(
+    isBack ? state.backLabelBitmap : state.labelBitmap,
+    isBack ? state.backCropPoints : state.cropPoints,
+  );
+});
 
 /* ── Flattening ─────────────────────────────────────────────────────── */
 
@@ -61,21 +85,35 @@ async function flattenAndReview() {
   await new Promise((resolve) => requestAnimationFrame(resolve));
 
   try {
-    state.cropPoints = crop.getPoints();
-    state.flattened = await crop.flatten();
-    // A fresh flatten needs a fresh read — otherwise runOcr's guard against
-    // re-running on every re-entry to review (added a food photo, went back
-    // and forward) would just as happily skip it here, and review would show
-    // whatever the previous crop happened to read.
-    state.ocrText = '';
-    state.ocrLines = [];
-    state.fields = {};
+    const points = crop.getPoints();
+    const flattened = await crop.flatten();
 
-    if (labelUrl) URL.revokeObjectURL(labelUrl);
-    labelUrl = URL.createObjectURL(state.flattened.blob);
-    $('#thumb-label').src = labelUrl;
+    if (state.cropTarget === 'back') {
+      state.backCropPoints = points;
+      state.backFlattened = flattened;
+      // Clear the last back-OCR so the review re-runs it — same reason
+      // the front path clears state.ocrText below.
+      state.backOcrText = '';
+      state.backOcrLines = [];
+      updateBackThumb();
+      go('review');
+    } else {
+      state.cropPoints = points;
+      state.flattened = flattened;
+      // A fresh flatten needs a fresh read — otherwise runOcr's guard against
+      // re-running on every re-entry to review (added a food photo, went back
+      // and forward) would just as happily skip it here, and review would show
+      // whatever the previous crop happened to read.
+      state.ocrText = '';
+      state.ocrLines = [];
+      state.fields = {};
 
-    go('review');
+      if (labelUrl) URL.revokeObjectURL(labelUrl);
+      labelUrl = URL.createObjectURL(state.flattened.blob);
+      $('#thumb-label').src = labelUrl;
+
+      go('review');
+    }
   } catch (err) {
     toast(`Could not flatten the label: ${err.message}`);
   } finally {
@@ -188,10 +226,72 @@ async function runOcr() {
   } finally {
     $('#ocr-progress').hidden = true;
   }
+  // Front OCR is done. If a back label is waiting for its own read, do
+  // it now — sequentially rather than in parallel because the OCR
+  // engine holds one Tesseract worker, and running two recognitions on
+  // it at once serializes anyway. The merge happens inside runBackOcr.
+  runBackOcrIfPending();
+}
+
+/**
+ * OCR the back label (if there is one and it hasn't been read yet), and
+ * merge any new field guesses into fields the user has left blank. Never
+ * overwrites something already filled in — front OCR's guesses stay
+ * whether or not the back would have said otherwise, and hand-typed
+ * values are always safe.
+ */
+async function runBackOcrIfPending() {
+  if (!state.backFlattened || state.backOcrText) return;
+  // A resumed draft that never finished its back OCR arrives with a blob
+  // but no canvas — rebuild one from the blob so Tesseract has something
+  // to read.
+  if (!state.backFlattened.canvas) {
+    const bmp = await createImageBitmap(state.backFlattened.blob);
+    const c = document.createElement('canvas');
+    c.width = bmp.width; c.height = bmp.height;
+    c.getContext('2d').drawImage(bmp, 0, 0);
+    bmp.close();
+    state.backFlattened.canvas = c;
+  }
+  showOcrProgress(0, 'Reading the back label…');
+  try {
+    const result = await ocr.recognize(state.backFlattened.canvas, (m) => {
+      showOcrProgress(m.progress || 0, 'Reading the back label…');
+    }, toTesseractLangs(getLanguages()));
+    state.backOcrText = result.text;
+    state.backOcrLines = result.lines;
+
+    // Show back-label lines alongside the front's in the raw text panel,
+    // so a wrong guess is still traceable.
+    if (result.lines.length) {
+      const separator = $('#raw-text').textContent ? '\n\n— Back label —\n' : '— Back label —\n';
+      $('#raw-text').textContent += separator + result.lines
+        .map((l) => `${String(Math.round(l.confidence)).padStart(3)}%  ${l.text}`)
+        .join('\n');
+    }
+
+    // Re-parse the two texts as one bigger label, then fill only the
+    // fields that are still empty — patchIfEmpty is what enforces the
+    // "never overwrite" rule.
+    const combined = {
+      text: `${state.ocrText}\n\n${result.text}`,
+      lines: [...state.ocrLines, ...result.lines],
+    };
+    const { fields } = parseLabel(combined);
+    for (const [key, value] of Object.entries(fields)) {
+      if (value) patchIfEmpty(key, value);
+    }
+    scheduleDraftSave();
+  } catch (err) {
+    toast(`Could not read the back label: ${err.message}`);
+  } finally {
+    $('#ocr-progress').hidden = true;
+  }
 }
 
 onEnter('review', () => {
   renderFoodThumb();
+  updateBackThumb();
   runOcr();
   scheduleDraftSave();
   attachFormSaveListener();
@@ -233,6 +333,11 @@ async function saveDraftNow() {
     labelLocation: state.labelLocation,
     labelCity: state.labelCity,
     labelCountry: state.labelCountry,
+    backLabelBlob: state.backLabelBlob,
+    backFlattenedBlob: state.backFlattened ? state.backFlattened.blob : null,
+    backCropPoints: state.backCropPoints,
+    backOcrText: state.backOcrText,
+    backOcrLines: state.backOcrLines,
     fields: record,
   };
 
@@ -291,6 +396,24 @@ async function resumeDraft(id) {
   state.labelCity = draft.labelCity || null;
   state.labelCountry = draft.labelCountry || null;
   state.fields = draft.fields || {};
+
+  // Back label — everything is optional; a draft written by an older
+  // build simply has none of these keys, and the review screen behaves as
+  // if the user never added one.
+  state.backLabelBlob = draft.backLabelBlob || null;
+  state.backCropPoints = draft.backCropPoints || null;
+  state.backOcrText = draft.backOcrText || '';
+  state.backOcrLines = draft.backOcrLines || [];
+  if (draft.backFlattenedBlob) {
+    state.backFlattened = { blob: draft.backFlattenedBlob, canvas: null };
+    if (draft.backLabelBlob) {
+      try { state.backLabelBitmap = await createImageBitmap(draft.backLabelBlob); } catch {
+        state.backLabelBitmap = await createImageBitmap(draft.backFlattenedBlob);
+      }
+    } else {
+      state.backLabelBitmap = await createImageBitmap(draft.backFlattenedBlob);
+    }
+  }
 
   // Point the review-screen thumbnail at the flattened image directly
   // (runOcr won't run for this pass, so its usual side effect that sets
@@ -424,6 +547,47 @@ function renderFoodThumb() {
 function removeFoodPhoto() {
   state.foodBlob = null;
   renderFoodThumb();
+  scheduleDraftSave();
+}
+
+/* ── Back label ─────────────────────────────────────────────────────── */
+
+let backUrl = null;
+
+function updateBackThumb() {
+  const image = $('#thumb-back');
+  const addButton = $('#btn-add-back');
+  const removeButton = $('#btn-remove-back');
+  const caption = $('#back-caption');
+
+  if (backUrl) { URL.revokeObjectURL(backUrl); backUrl = null; }
+
+  if (state.backFlattened && state.backFlattened.blob) {
+    backUrl = URL.createObjectURL(state.backFlattened.blob);
+    image.src = backUrl;
+    image.hidden = false;
+    addButton.hidden = true;
+    removeButton.hidden = false;
+    caption.hidden = false;
+  } else {
+    image.removeAttribute('src');
+    image.hidden = true;
+    addButton.hidden = false;
+    removeButton.hidden = true;
+    caption.hidden = true;
+  }
+}
+
+function removeBackLabel() {
+  if (state.backLabelBitmap) state.backLabelBitmap.close();
+  state.backLabelBitmap = null;
+  state.backLabelBlob = null;
+  state.backCropPoints = null;
+  state.backFlattened = null;
+  state.backOcrText = '';
+  state.backOcrLines = [];
+  updateBackThumb();
+  scheduleDraftSave();
 }
 
 /* ── Enlarged photo ─────────────────────────────────────────────────── */
@@ -499,8 +663,9 @@ async function saveBottle() {
     const result = await save({
       record: readValues(),
       labelBlob: state.flattened.blob,
+      backLabelBlob: state.backFlattened ? state.backFlattened.blob : null,
       foodBlob: state.foodBlob,
-      ocrText: state.ocrText,
+      ocrText: [state.ocrText, state.backOcrText].filter(Boolean).join('\n\n'),
     });
 
     $('#saved-title').textContent = result.sent === false
@@ -809,14 +974,18 @@ ocrCacheBtn.addEventListener('click', () => {
 vaultButton.addEventListener('click', onVaultButton);
 $('#btn-add-food').addEventListener('click', () => go('capture', 'food'));
 $('#btn-remove-food').addEventListener('click', removeFoodPhoto);
+$('#btn-add-back').addEventListener('click', () => go('capture', 'back'));
+$('#btn-remove-back').addEventListener('click', removeBackLabel);
 $('#btn-save').addEventListener('click', saveBottle);
 $('#thumb-label').addEventListener('click', (event) => enlarge(event.currentTarget));
+$('#thumb-back').addEventListener('click', (event) => enlarge(event.currentTarget));
 $('#thumb-food').addEventListener('click', (event) => enlarge(event.currentTarget));
 // A distinct arg, not a bare `go('crop')` — this crop screen was reached from
 // review, not from capture, so it needs its own place in the stack rather
 // than jumping back to the original crop entry (which would leave review
 // unreachable by back and land two steps too far on a phone/camera).
 $('#btn-edit-label').addEventListener('click', () => go('crop', 'edit'));
+$('#btn-edit-back').addEventListener('click', () => go('crop', 'back-edit'));
 $('#lightbox').addEventListener('click', dismissOverlay);
 
 registerServiceWorker();

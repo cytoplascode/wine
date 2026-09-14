@@ -18,18 +18,18 @@ const GRAB_RADIUS = 30;     // CSS px — touch target, comfortably past a finge
 const INSET = 0.1;          // handles start 10% in from each edge
 const BULGE = 0.035;        // default curve on the top and bottom edges
 
-/** How far (in source-image pixels) the snap-to-edge feature looks around a
- *  released corner. Small enough that hands and neighbouring bottles cannot
- *  attract a handle across the frame, wide enough to fix a finger that landed
- *  a few CSS pixels off the real edge on a phone screen. */
-const SNAP_RADIUS = 60;
+/** How far back in time to look when correcting for finger-lift drift.
+ *  When a fingertip rolls off the glass on release, iOS and Android emit one
+ *  last pointermove with a few pixels of unintended motion; freezing at the
+ *  position the finger was already at ~90 ms earlier gives back the precision
+ *  that drift takes away. */
+const RELEASE_LOOKBACK_MS = 90;
 
-/** Minimum gradient magnitude the snap needs to see before it fires. Well
- *  below the darkest paper-to-glass step on a well-lit label, well above the
- *  noise floor of a slightly out-of-focus region. */
-const SNAP_MIN_GRAD = 60;
-
-const SNAP_STORAGE_KEY = 'cropSnap';
+/** The drift correction only fires if the finger really had settled. Anything
+ *  above this cumulative movement during the lookback window is treated as
+ *  the user still steering the handle on purpose, and the release position is
+ *  honoured as-is. */
+const RELEASE_SETTLED_PX = 6;   // in source-image pixels
 
 /** Indices into `points`: A, B, C, D, E, F. */
 const TL = 0; const TM = 1; const TR = 2; const BR = 3; const BM = 4; const BL = 5;
@@ -52,8 +52,7 @@ let wrap = DEFAULT_WRAP;    // how far round the bottle the label goes
 let dragging = -1;
 let view = { scale: 1, dpr: 1 };
 let previewSource = null;   // small copy of the photo, for the preview warp
-let edgeMap = null;         // gradient magnitudes on the preview copy, for snap
-let snapEnabled = readSnapPref();
+let dragTrail = [];         // recent {point, time} — see release-drift below
 
 export function initCrop() {
   const canvas = $('#crop-canvas');
@@ -62,14 +61,6 @@ export function initCrop() {
   canvas.addEventListener('pointerup', onPointerUp);
   canvas.addEventListener('pointercancel', onPointerUp);
   $('#btn-crop-reset').addEventListener('click', resetPoints);
-
-  const snapButton = $('#btn-crop-snap');
-  snapButton.setAttribute('aria-pressed', String(snapEnabled));
-  snapButton.addEventListener('click', () => {
-    snapEnabled = !snapEnabled;
-    snapButton.setAttribute('aria-pressed', String(snapEnabled));
-    writeSnapPref(snapEnabled);
-  });
 
   const slider = $('#wrap-slider');
   slider.value = String(Math.round((DEFAULT_WRAP * 180) / Math.PI));
@@ -128,8 +119,7 @@ function resetPoints() {
 /* ── Live preview ───────────────────────────────────────────────────── */
 
 /** A small copy of the photo, so the preview can be re-warped on every pointer
- *  move without touching the full-resolution image. The edge map for the snap
- *  feature rides along on the same downscale — one canvas, one readback. */
+ *  move without touching the full-resolution image. */
 function buildPreviewSource() {
   const scale = Math.min(1, (PREVIEW_WIDTH * 2.5) / bitmap.width);
   const canvas = document.createElement('canvas');
@@ -137,72 +127,31 @@ function buildPreviewSource() {
   canvas.height = Math.max(1, Math.round(bitmap.height * scale));
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  previewSource = { image, scale };
-  edgeMap = buildEdgeMap(image);
+  previewSource = {
+    image: ctx.getImageData(0, 0, canvas.width, canvas.height),
+    scale,
+  };
 }
 
-/** Sobel-lite gradient magnitude on the luminance channel of `image`. A pure
- *  |dx| + |dy| central difference on BT.601 luminance — cheap, ~100 µs on a
- *  650×870 preview copy, more than enough to see a paper-to-glass edge. */
-function buildEdgeMap({ width, height, data }) {
-  const grad = new Float32Array(width * height);
-  const lum = new Float32Array(width * height);
-  for (let i = 0, o = 0; i < data.length; i += 4, o += 1) {
-    lum[o] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+/** Position from `RELEASE_LOOKBACK_MS` ago if the finger settled during that
+ *  window, otherwise null. What the drift correction reads at pointer-up. */
+function preReleasePosition() {
+  if (dragTrail.length < 2) return null;
+  const now = performance.now();
+  let anchor = null;
+  for (let i = dragTrail.length - 1; i >= 0; i--) {
+    if (now - dragTrail[i].t >= RELEASE_LOOKBACK_MS) { anchor = dragTrail[i]; break; }
   }
-  for (let y = 1; y < height - 1; y++) {
-    for (let x = 1; x < width - 1; x++) {
-      const i = y * width + x;
-      const dx = lum[i + 1] - lum[i - 1];
-      const dy = lum[i + width] - lum[i - width];
-      grad[i] = Math.abs(dx) + Math.abs(dy);
+  if (!anchor) return null;
+  // Everything from the anchor to the release must be within a small radius,
+  // or the finger was still moving — respect its landing spot.
+  for (const sample of dragTrail) {
+    if (sample.t < anchor.t) continue;
+    if (Math.hypot(sample.p.x - anchor.p.x, sample.p.y - anchor.p.y) > RELEASE_SETTLED_PX) {
+      return null;
     }
   }
-  return { width, height, data: grad };
-}
-
-/** Read/write the snap toggle across sessions. Wrapped so a private-window
- *  refusal or a full storage never breaks the crop screen. */
-function readSnapPref() {
-  try { return localStorage.getItem(SNAP_STORAGE_KEY) !== 'off'; } catch { return true; }
-}
-function writeSnapPref(on) {
-  try { localStorage.setItem(SNAP_STORAGE_KEY, on ? 'on' : 'off'); } catch { /* full or blocked */ }
-}
-
-/**
- * Look for a strong image edge within `SNAP_RADIUS` source pixels of `(x, y)`
- * and, if one is close enough, return its position. The search runs on the
- * downscaled `edgeMap`, so a large radius here is still a small window of
- * a few dozen samples. Returns `null` when nothing crosses the threshold —
- * silent no-op is the point.
- */
-function snapCornerToEdge(x, y) {
-  if (!edgeMap || !previewSource) return null;
-  const scale = previewSource.scale;
-  const { width, height, data } = edgeMap;
-
-  const cx = Math.round(x * scale);
-  const cy = Math.round(y * scale);
-  const r = Math.max(2, Math.round(SNAP_RADIUS * scale));
-  const x0 = Math.max(1, cx - r);
-  const y0 = Math.max(1, cy - r);
-  const x1 = Math.min(width - 2, cx + r);
-  const y1 = Math.min(height - 2, cy + r);
-
-  let bestG = 0;
-  let bestX = -1;
-  let bestY = -1;
-  for (let py = y0; py <= y1; py++) {
-    const rowStart = py * width;
-    for (let px = x0; px <= x1; px++) {
-      const g = data[rowStart + px];
-      if (g > bestG) { bestG = g; bestX = px; bestY = py; }
-    }
-  }
-  if (bestG < SNAP_MIN_GRAD || bestX < 0) return null;
-  return { x: bestX / scale, y: bestY / scale, strength: bestG };
+  return anchor.p;
 }
 
 /** Flatten at preview size, so the user can watch the label straighten as they
@@ -324,6 +273,7 @@ function onPointerDown(event) {
 
   if (bestDistance > limit) return;
   dragging = best;
+  dragTrail = [];
   rememberChords();
   $('#crop-loupe').hidden = false;
   drawLoupe();
@@ -356,6 +306,12 @@ function onPointerMove(event) {
     // user set is kept instead of being left stranded off the edge.
     carryMiddles();
   }
+
+  // Remember where this handle actually landed after constraints. On release
+  // preReleasePosition() walks back through this trail to spot the position
+  // the finger had already reached before the lift-drift micro-motion.
+  dragTrail.push({ p: { ...points[dragging] }, t: performance.now() });
+  if (dragTrail.length > 32) dragTrail.shift();
 
   draw();
   drawPreview();
@@ -417,22 +373,20 @@ function onPointerUp(event) {
   $('#crop-loupe').hidden = true;
   try { event.target.releasePointerCapture(event.pointerId); } catch { /* already gone */ }
 
-  // Corner handles get pulled onto the nearest strong edge, if the user's
-  // finger landed close to one. Middle handles set curvature and have no
-  // "edge" to snap to; the auto-fit below handles them instead.
-  if (snapEnabled && (released === TL || released === TR
-                       || released === BR || released === BL)) {
-    const p = points[released];
-    const snap = snapCornerToEdge(p.x, p.y);
-    if (snap) {
-      points[released] = { x: snap.x, y: snap.y };
-      // Bringing a corner in means its edge's middle handle should ride along
-      // just like it does mid-drag; otherwise a snapped corner leaves the
-      // curvature stranded off the new position.
-      rememberChords();
-      carryMiddles();
-      draw();
-    }
+  // Undo the little bit of finger-lift drift the OS reports as the fingertip
+  // rolls off the glass. Only when the finger really had settled — a still
+  // moving handle keeps its landing position.
+  const settled = preReleasePosition();
+  if (settled) {
+    points[released] = { x: settled.x, y: settled.y };
+    // Corner handles carry their middle-handle bulge along mid-drag; rewinding
+    // the corner would leave the middle sitting a couple of pixels off. Call
+    // carryMiddles WITHOUT rememberChords first: the existing chord-start
+    // captured a moment ago holds the drifted midpoint, so the delta this
+    // computes is exactly the drift, applied in reverse.
+    if (released !== TM && released !== BM) carryMiddles();
+    draw();
+    drawPreview();
   }
 
   // Every handle release changes what the fitter would say — the label's own

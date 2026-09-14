@@ -204,7 +204,7 @@ async function runOcr() {
 
   setValues(withAutoContext(emptyRecord()), autoContextKeys());
   resolveDrinkLocation();
-  $('#raw-text').textContent = '';
+  renderRawText();
   showOcrProgress(0, 'Starting the recognition engine…');
   try {
     const result = await ocr.recognize(state.flattened.canvas, (m) => {
@@ -212,18 +212,14 @@ async function runOcr() {
     }, toTesseractLangs(getLanguages()));
     state.ocrText = result.text;
     state.ocrLines = result.lines;
-    $('#raw-text').textContent = result.lines.length
-      ? result.lines
-        .map((l) => `${String(Math.round(l.confidence)).padStart(3)}%  ${l.text}`)
-        .join('\n')
-      : '(nothing was recognised)';
+    renderRawText();
 
     const { fields, auto } = parseLabel(result);
     state.fields = fields;
     setValues(withAutoContext({ ...emptyRecord(), ...fields }), [...auto, ...autoContextKeys()]);
     scheduleDraftSave();
   } catch (err) {
-    $('#raw-text').textContent = '';
+    renderRawText();
     toast(`Could not read the label: ${err.message}`);
   } finally {
     $('#ocr-progress').hidden = true;
@@ -233,6 +229,33 @@ async function runOcr() {
   // engine holds one Tesseract worker, and running two recognitions on
   // it at once serializes anyway. The merge happens inside runBackOcr.
   runBackOcrIfPending();
+}
+
+/**
+ * Rebuild the raw-text panel from what's currently in state. Called on every
+ * review-screen entry so a resumed draft (or a switch between bottles) shows
+ * *this* bottle's lines instead of whatever the previous bottle's OCR left in
+ * the DOM, and after each OCR pass so the panel picks up newly recognised
+ * lines. Confidence numbers are left off — the panel is what users copy from,
+ * and "85%  " prefixes make paste unusable.
+ */
+function renderRawText() {
+  const panel = $('#raw-text');
+  if (!panel) return;
+  const front = (state.ocrLines || []).map((l) => l.text).join('\n');
+  const back = (state.backOcrLines || []).map((l) => l.text).join('\n');
+  const parts = [];
+  if (front) parts.push(front);
+  if (back) parts.push(`— Back label —\n${back}`);
+  if (parts.length) {
+    panel.textContent = parts.join('\n\n');
+  } else if (state.ocrText === '' && state.flattened) {
+    // Fresh flatten, OCR has not run yet — leave the panel empty rather than
+    // stamping "(nothing was recognised)" before the engine even ran.
+    panel.textContent = '';
+  } else {
+    panel.textContent = state.flattened ? '(nothing was recognised)' : '';
+  }
 }
 
 /**
@@ -262,15 +285,7 @@ async function runBackOcrIfPending() {
     }, toTesseractLangs(getLanguages()));
     state.backOcrText = result.text;
     state.backOcrLines = result.lines;
-
-    // Show back-label lines alongside the front's in the raw text panel,
-    // so a wrong guess is still traceable.
-    if (result.lines.length) {
-      const separator = $('#raw-text').textContent ? '\n\n— Back label —\n' : '— Back label —\n';
-      $('#raw-text').textContent += separator + result.lines
-        .map((l) => `${String(Math.round(l.confidence)).padStart(3)}%  ${l.text}`)
-        .join('\n');
-    }
+    renderRawText();
 
     // Re-parse the two texts as one bigger label, then fill only the
     // fields that are still empty — patchIfEmpty is what enforces the
@@ -294,6 +309,11 @@ async function runBackOcrIfPending() {
 onEnter('review', () => {
   renderFoodThumb();
   updateBackThumb();
+  // Rebuild the raw-text panel from THIS bottle's state before OCR maybe
+  // fires — otherwise a resumed draft shows the previous bottle's lines (which
+  // the DOM still holds from that session) until the OCR guard clears them,
+  // and a resumed draft never fires OCR at all.
+  renderRawText();
   runOcr();
   scheduleDraftSave();
   attachFormSaveListener();

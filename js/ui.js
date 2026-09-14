@@ -103,6 +103,12 @@ window.addEventListener('popstate', (event) => {
  */
 export function openOverlay(close) {
   overlayClose = close;
+  // pushState clears the browser's forward history, so any nav entries beyond
+  // the current depth would point at entries the browser has just dropped —
+  // trim them here to stay in sync. Without this, a subsequent go() that would
+  // have resolved to a `jump` into that forward hits the stale overlay entry
+  // instead, and the app lands on nothing.
+  nav.clearForward();
   history.pushState({ depth: nav.depth, overlay: true }, '');
 }
 

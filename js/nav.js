@@ -63,4 +63,14 @@ export class Nav {
     this.depth = next;
     return { ...this.stack[next], depth: next };
   }
+
+  /**
+   * Drop any forward entries from the stack. Callers use this before doing a
+   * `history.pushState` outside of `go()` — an overlay, say — since pushState
+   * clears the browser's forward history and any nav entries beyond the current
+   * depth would otherwise point at browser entries that no longer exist.
+   */
+  clearForward() {
+    if (this.stack.length > this.depth + 1) this.stack = this.stack.slice(0, this.depth + 1);
+  }
 }

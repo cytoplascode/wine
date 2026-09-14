@@ -108,3 +108,33 @@ test('a history event that changes nothing draws nothing', () => {
   go('home'); go('capture', 'label');
   assert.equal(nav.pop(1), null, 'already at depth 1 — an overlay closing, say');
 });
+
+test('clearForward drops entries beyond the current depth', () => {
+  // Simulate the sequence that used to break the pencil button: home → review
+  // → crop-edit, then back to review. Nav's forward memory still holds
+  // crop-edit at index 2, and a subsequent openOverlay overwrites the
+  // browser's forward history — clearForward is what keeps nav in sync.
+  const { go, back, nav } = app();
+  go('home'); go('review'); go('crop', 'edit');
+  back();
+  assert.equal(nav.depth, 1);
+  assert.equal(nav.stack.length, 3);
+
+  nav.clearForward();
+  assert.equal(nav.stack.length, 2);
+  assert.equal(nav.current.screen, 'review');
+
+  // A fresh navigation to the same target now pushes (not jumps), so the caller
+  // ends up on it — no more stranded on nothing.
+  const plan = nav.go('crop', 'edit');
+  assert.equal(plan.action, 'push');
+  assert.equal(nav.depth, 2);
+});
+
+test('clearForward on a stack with nothing forward is a no-op', () => {
+  const { go, nav } = app();
+  go('home'); go('review');
+  nav.clearForward();
+  assert.equal(nav.stack.length, 2);
+  assert.equal(nav.depth, 1);
+});

@@ -20,6 +20,8 @@ import { save, launchUri, PermissionNeeded } from './save.js';
 import {
   putDraft, listDrafts, getDraft, removeDraft, newDraftId,
 } from './drafts.js';
+import { sharedGet, sharedClear } from './idb.js';
+import { readCaptureDate, readCaptureLocation, localIsoDate } from './exif.js';
 import {
   LANGUAGES, MAX_ACTIVE, getLanguages, setLanguages, toTesseractLangs, totalMegabytes,
 } from './languages.js';
@@ -991,3 +993,42 @@ $('#lightbox').addEventListener('click', dismissOverlay);
 registerServiceWorker();
 vault.restore().then(renderVaultCard);
 go('home');
+
+/* ── Share target ───────────────────────────────────────────────────── */
+
+/* Android's share sheet POSTs the image to `./share/`; the service worker
+ * intercepts it, stashes the file in IndexedDB under key 'pending', and
+ * redirects here with `?share=1`. Pick it up now, then clear it — reading
+ * before clearing means a browser reload doesn't lose the shared photo
+ * either, and the ?share flag is what tells us to look. */
+async function pickUpSharedFile() {
+  if (!new URLSearchParams(location.search).get('share')) return;
+  // Strip the flag so a reload doesn't try to consume the same file twice
+  // (the row is already gone by then; the query would just be noise).
+  const url = new URL(location.href);
+  url.searchParams.delete('share');
+  history.replaceState(null, '', url.pathname + url.search + url.hash);
+
+  let file;
+  try {
+    file = await sharedGet();
+  } catch {
+    return;
+  }
+  if (!file) return;
+  sharedClear().catch(() => {});
+
+  try {
+    const [bitmap, capturedOn, location_] = await Promise.all([
+      createImageBitmap(file, { imageOrientation: 'from-image' }),
+      readCaptureDate(file),
+      readCaptureLocation(file),
+    ]);
+    resetCapture();
+    handlePhoto(bitmap, 'label', capturedOn || localIsoDate(), location_, file);
+  } catch (err) {
+    toast(`That shared image could not be opened: ${err.message}`);
+  }
+}
+
+pickUpSharedFile();

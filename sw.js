@@ -91,11 +91,64 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const { request } = event;
-  if (request.method !== 'GET') return;
-  if (new URL(request.url).origin !== self.location.origin) return;
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
 
+  // Android's share sheet POSTs a multipart form to this URL when the user
+  // shares a photo into the app (declared as share_target in manifest.json).
+  // Take the file out of the form, stash it in a session-local place the
+  // app itself can find, then redirect to the app's own start URL with a
+  // flag so app.js knows to pick it up.
+  if (request.method === 'POST' && url.pathname.endsWith('/share/')) {
+    event.respondWith(handleShareTarget(request));
+    return;
+  }
+
+  if (request.method !== 'GET') return;
   event.respondWith(isVendorAsset(request.url) ? cacheFirst(request) : networkFirst(request));
 });
+
+/** Received a photo shared from another app. Stash it and redirect. */
+async function handleShareTarget(request) {
+  try {
+    const formData = await request.formData();
+    const file = formData.get('image');
+    if (file && file.type && file.type.startsWith('image/')) {
+      // Pass the file to whichever client picks it up. IndexedDB accepts
+      // File/Blob objects, which is what the SW gets from the form and
+      // what the app needs to hand to createImageBitmap.
+      await stashSharedFile(file);
+    }
+  } catch {
+    // A malformed post is not worth halting on — better to land the user
+    // on the home screen than a broken share flow.
+  }
+  return Response.redirect('./?share=1', 303);
+}
+
+async function stashSharedFile(file) {
+  // Use the same schema idb.js declares (version 3, three stores). Opening
+  // at the current version means no upgrade is triggered when the app has
+  // already run; declaring the upgrade path keeps the SW self-contained
+  // for the case where the share target fires before the page ever loads.
+  const db = await new Promise((resolve, reject) => {
+    const req = indexedDB.open('label-scanner', 3);
+    req.onupgradeneeded = () => {
+      const d = req.result;
+      if (!d.objectStoreNames.contains('handles')) d.createObjectStore('handles');
+      if (!d.objectStoreNames.contains('drafts')) d.createObjectStore('drafts');
+      if (!d.objectStoreNames.contains('shared')) d.createObjectStore('shared');
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction('shared', 'readwrite');
+    tx.objectStore('shared').put(file, 'pending');
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => reject(tx.error);
+  });
+}
 
 /**
  * The vendored OCR files: several megabytes, immutable — a new build of

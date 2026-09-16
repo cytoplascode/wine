@@ -1,6 +1,6 @@
 /* A very small IndexedDB wrapper.
  *
- * Three stores, in the same database:
+ * Four stores, in the same database:
  *   - `handles`  the vault's FileSystemDirectoryHandle between visits;
  *                keyed by a fixed string, structured-cloneable, holds one.
  *   - `drafts`   in-progress bottles the user hasn't sent to Obsidian yet.
@@ -9,6 +9,10 @@
  *   - `shared`   a photo shared into the app from another app's share sheet.
  *                Written by the service worker's share-target handler, read
  *                by app.js on startup. One row, keyed 'pending'.
+ *   - `archive`  the last N bottles that were sent to the vault, kept on the
+ *                phone as a safety net — Obsidian might not actually have
+ *                saved them. Same schema as a draft plus a `sentAt` field;
+ *                capped at ARCHIVE_LIMIT rows in js/archive.js.
  *
  * Bumping DB_VERSION triggers `onupgradeneeded` which creates any missing
  * store; a phone that installed the app before a store existed picks it
@@ -16,10 +20,11 @@
  */
 
 const DB_NAME = 'label-scanner';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const HANDLES = 'handles';
 const DRAFTS = 'drafts';
 const SHARED = 'shared';
+const ARCHIVE = 'archive';
 
 let dbPromise = null;
 
@@ -33,6 +38,7 @@ function openDatabase() {
       if (!db.objectStoreNames.contains(HANDLES)) db.createObjectStore(HANDLES);
       if (!db.objectStoreNames.contains(DRAFTS)) db.createObjectStore(DRAFTS);
       if (!db.objectStoreNames.contains(SHARED)) db.createObjectStore(SHARED);
+      if (!db.objectStoreNames.contains(ARCHIVE)) db.createObjectStore(ARCHIVE);
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
@@ -67,3 +73,10 @@ export const draftAll = () => run(DRAFTS, 'readonly', (store) => store.getAll())
 
 export const sharedGet = () => run(SHARED, 'readonly', (store) => store.get('pending'));
 export const sharedClear = () => run(SHARED, 'readwrite', (store) => store.delete('pending'));
+
+/* ── archive: bottles already sent to the vault, kept as a safety net ─ */
+
+export const archivePut = (id, value) => run(ARCHIVE, 'readwrite', (store) => store.put(value, id));
+export const archiveGet = (id) => run(ARCHIVE, 'readonly', (store) => store.get(id));
+export const archiveDelete = (id) => run(ARCHIVE, 'readwrite', (store) => store.delete(id));
+export const archiveAll = () => run(ARCHIVE, 'readonly', (store) => store.getAll());

@@ -62,8 +62,12 @@ export async function removeDraft(id) {
   await draftDelete(id);
 }
 
-/** All drafts, newest first — the order the home screen shows them in. */
+/** All drafts, newest-created first. Sort by `createdAt` — not `updatedAt` —
+ *  so the order does not shuffle every time the review screen auto-saves the
+ *  draft that was just opened. `updatedAt` still drives the "when" text, so
+ *  the row shows the last-touched time even though the row itself does not
+ *  move. */
 export async function listDrafts() {
   const rows = (await draftAll()) || [];
-  return rows.sort((a, b) => b.updatedAt - a.updatedAt);
+  return rows.sort((a, b) => b.createdAt - a.createdAt);
 }

@@ -777,12 +777,35 @@ body.dragging-field { user-select: none; -webkit-user-select: none; }
 
 .done h2 { margin: 6px 0 0; font-size: 22px; }
 
-#drafts-list {
+#drafts-list,
+#recent-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
   margin-top: 8px;
 }
+
+/* The Recent card is a native <details>: a compact header the user taps to
+   open, keeping the home screen scannable when the archive fills up. Match
+   the other cards' typography so the collapsed state does not read as
+   secondary UI. */
+#recent-card > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+#recent-card > summary::-webkit-details-marker { display: none; }
+#recent-card > summary::after {
+  content: '▸';
+  margin-left: auto;
+  color: var(--muted);
+  transition: transform 0.15s;
+}
+#recent-card[open] > summary::after { transform: rotate(90deg); }
+#recent-card > summary h2 { margin: 0; }
+#recent-count { font-size: 13px; }
 
 .draft-row {
   display: flex;

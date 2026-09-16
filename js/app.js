@@ -20,6 +20,9 @@ import { save, launchUri, PermissionNeeded } from './save.js';
 import {
   putDraft, listDrafts, getDraft, removeDraft, newDraftId,
 } from './drafts.js';
+import {
+  archiveBottle, listArchive, getArchive, removeArchive, ARCHIVE_LIMIT,
+} from './archive.js';
 import { sharedGet, sharedClear } from './idb.js';
 import { readCaptureDate, readCaptureLocation, localIsoDate } from './exif.js';
 import {
@@ -339,12 +342,11 @@ function scheduleDraftSave() {
   draftSaveTimer = setTimeout(saveDraftNow, DRAFT_SAVE_DEBOUNCE_MS);
 }
 
-async function saveDraftNow() {
-  if (!state.flattened || !state.flattened.blob) return;
-  if (!state.draftId) state.draftId = newDraftId();
-
-  const record = readValues();
-  const snapshot = {
+/** The full review-screen state as a plain object, ready to be written to a
+ *  draft or an archive row. Photos as blobs, form values, OCR text — enough
+ *  to rebuild the review screen exactly. */
+function currentSnapshot() {
+  return {
     labelBlob: state.labelBlob,
     flattenedBlob: state.flattened.blob,
     foodBlob: state.foodBlob,
@@ -360,8 +362,15 @@ async function saveDraftNow() {
     backCropPoints: state.backCropPoints,
     backOcrText: state.backOcrText,
     backOcrLines: state.backOcrLines,
-    fields: record,
+    fields: readValues(),
   };
+}
+
+async function saveDraftNow() {
+  if (!state.flattened || !state.flattened.blob) return;
+  if (!state.draftId) state.draftId = newDraftId();
+
+  const snapshot = currentSnapshot();
 
   try {
     await putDraft(state.draftId, snapshot);
@@ -384,56 +393,54 @@ function attachFormSaveListener() {
   formSaveListenerAttached = true;
 }
 
-/** Resume a draft: rebuild the review-screen state from an IndexedDB row
- *  and jump to review. Skips OCR — the stored `ocrText` is already the
- *  guard `runOcr` checks against, so the OCR pass sees "already done"
- *  and moves on, saving several seconds and an engine warm-up. */
-async function resumeDraft(id) {
-  const draft = await getDraft(id);
-  if (!draft) return;
-
+/** Rebuild the full review-screen state from a stored snapshot (draft or
+ *  archive row). Then jumps to review. Whether the resulting review edits
+ *  auto-save back to the ORIGINAL row is the caller's decision, via
+ *  `state.draftId` — pass the id to keep saving into that draft, pass null
+ *  to let the review screen mint a fresh draft on the next save. */
+async function restoreSnapshot(snapshot, draftId) {
   resetCapture();
-  state.draftId = id;
-  state.labelBlob = draft.labelBlob || null;
-  if (draft.labelBlob) {
-    // A source blob is only there if the draft was written by a build
+  state.draftId = draftId;
+  state.labelBlob = snapshot.labelBlob || null;
+  if (snapshot.labelBlob) {
+    // A source blob is only there if the snapshot was written by a build
     // that stored one; older ones just have the flattened. Rebuild the
     // bitmap so the pencil-to-recrop workflow still lands on the source.
-    try { state.labelBitmap = await createImageBitmap(draft.labelBlob); } catch {
+    try { state.labelBitmap = await createImageBitmap(snapshot.labelBlob); } catch {
       // Corrupt blob or a browser mid-refresh — fall back to the flattened
       // as the source. Crops from here will be crops of the flattened,
       // which is a small regression but never a data loss.
-      state.labelBitmap = await createImageBitmap(draft.flattenedBlob);
+      state.labelBitmap = await createImageBitmap(snapshot.flattenedBlob);
     }
   } else {
-    state.labelBitmap = await createImageBitmap(draft.flattenedBlob);
+    state.labelBitmap = await createImageBitmap(snapshot.flattenedBlob);
   }
-  state.flattened = { blob: draft.flattenedBlob, canvas: null };
-  state.foodBlob = draft.foodBlob || null;
-  state.ocrText = draft.ocrText || '';
-  state.ocrLines = draft.ocrLines || [];
-  state.cropPoints = draft.cropPoints || null;
-  state.labelDate = draft.labelDate || null;
-  state.labelLocation = draft.labelLocation || null;
-  state.labelCity = draft.labelCity || null;
-  state.labelCountry = draft.labelCountry || null;
-  state.fields = draft.fields || {};
+  state.flattened = { blob: snapshot.flattenedBlob, canvas: null };
+  state.foodBlob = snapshot.foodBlob || null;
+  state.ocrText = snapshot.ocrText || '';
+  state.ocrLines = snapshot.ocrLines || [];
+  state.cropPoints = snapshot.cropPoints || null;
+  state.labelDate = snapshot.labelDate || null;
+  state.labelLocation = snapshot.labelLocation || null;
+  state.labelCity = snapshot.labelCity || null;
+  state.labelCountry = snapshot.labelCountry || null;
+  state.fields = snapshot.fields || {};
 
-  // Back label — everything is optional; a draft written by an older
+  // Back label — everything is optional; a snapshot written by an older
   // build simply has none of these keys, and the review screen behaves as
   // if the user never added one.
-  state.backLabelBlob = draft.backLabelBlob || null;
-  state.backCropPoints = draft.backCropPoints || null;
-  state.backOcrText = draft.backOcrText || '';
-  state.backOcrLines = draft.backOcrLines || [];
-  if (draft.backFlattenedBlob) {
-    state.backFlattened = { blob: draft.backFlattenedBlob, canvas: null };
-    if (draft.backLabelBlob) {
-      try { state.backLabelBitmap = await createImageBitmap(draft.backLabelBlob); } catch {
-        state.backLabelBitmap = await createImageBitmap(draft.backFlattenedBlob);
+  state.backLabelBlob = snapshot.backLabelBlob || null;
+  state.backCropPoints = snapshot.backCropPoints || null;
+  state.backOcrText = snapshot.backOcrText || '';
+  state.backOcrLines = snapshot.backOcrLines || [];
+  if (snapshot.backFlattenedBlob) {
+    state.backFlattened = { blob: snapshot.backFlattenedBlob, canvas: null };
+    if (snapshot.backLabelBlob) {
+      try { state.backLabelBitmap = await createImageBitmap(snapshot.backLabelBlob); } catch {
+        state.backLabelBitmap = await createImageBitmap(snapshot.backFlattenedBlob);
       }
     } else {
-      state.backLabelBitmap = await createImageBitmap(draft.backFlattenedBlob);
+      state.backLabelBitmap = await createImageBitmap(snapshot.backFlattenedBlob);
     }
   }
 
@@ -441,7 +448,7 @@ async function resumeDraft(id) {
   // (runOcr won't run for this pass, so its usual side effect that sets
   // the thumbnail via labelUrl doesn't fire).
   if (labelUrl) URL.revokeObjectURL(labelUrl);
-  labelUrl = URL.createObjectURL(draft.flattenedBlob);
+  labelUrl = URL.createObjectURL(snapshot.flattenedBlob);
   $('#thumb-label').src = labelUrl;
 
   go('review');
@@ -449,13 +456,38 @@ async function resumeDraft(id) {
   // *before* our fields would otherwise get to the DOM; setting them here
   // (with autoContextKeys marking the Drink * fields as guesses) matches
   // exactly how the OCR flow leaves the form on a fresh capture.
-  setValues(withAutoContext(draft.fields || {}), autoContextKeys());
+  setValues(withAutoContext(snapshot.fields || {}), autoContextKeys());
+}
+
+/** Resume a draft: rebuild the review-screen state from an IndexedDB row
+ *  and jump to review. Skips OCR — the stored `ocrText` is already the
+ *  guard `runOcr` checks against, so the OCR pass sees "already done"
+ *  and moves on, saving several seconds and an engine warm-up. */
+async function resumeDraft(id) {
+  const draft = await getDraft(id);
+  if (!draft) return;
+  await restoreSnapshot(draft, id);
+}
+
+/** Reopen a sent bottle from the archive. Starts a fresh draft cycle, so a
+ *  re-send lands as a new draft and (if it succeeds) a new archive entry —
+ *  the original archive row stays put as a record of the earlier send until
+ *  the user discards it. */
+async function reopenArchived(id) {
+  const row = await getArchive(id);
+  if (!row) return;
+  await restoreSnapshot(row, null);
 }
 
 async function discardDraft(id) {
   await removeDraft(id);
   if (state.draftId === id) state.draftId = null;
   renderDraftsCard();
+}
+
+async function discardArchived(id) {
+  await removeArchive(id);
+  renderRecentCard();
 }
 
 /** Render the Drafts card on the home screen: hide it entirely when empty,
@@ -506,6 +538,63 @@ function renderDraftRow(draft) {
 
   row.append(resume, discard);
   return row;
+}
+
+/** Render the Recent-sends card on the home screen: hides itself when the
+ *  archive is empty, otherwise a compact collapsed list of the bottles
+ *  already sent to the vault. Tapping a row reopens it in review for a
+ *  potential re-send. */
+async function renderRecentCard() {
+  const card = $('#recent-card');
+  const list = $('#recent-list');
+  const count = $('#recent-count');
+  if (!card || !list) return;
+
+  let rows;
+  try {
+    rows = await listArchive();
+  } catch {
+    rows = [];
+  }
+  if (!rows.length) {
+    card.hidden = true;
+    return;
+  }
+
+  card.hidden = false;
+  if (count) {
+    count.textContent = rows.length === ARCHIVE_LIMIT
+      ? `${rows.length} (max)`
+      : String(rows.length);
+  }
+  list.textContent = '';
+  for (const row of rows) list.append(renderArchiveRow(row));
+}
+
+function renderArchiveRow(row) {
+  const wrap = document.createElement('div');
+  wrap.className = 'draft-row';
+
+  const open = document.createElement('button');
+  open.type = 'button';
+  open.className = 'draft-resume';
+  open.append(thumbnail(row.flattenedBlob), textColumn({
+    title: row.title,
+    updatedAt: row.sentAt,     // "sent 3 mins ago" reads the same way
+  }));
+  open.addEventListener('click', () => reopenArchived(row.id));
+
+  const discard = document.createElement('button');
+  discard.type = 'button';
+  discard.className = 'draft-discard';
+  discard.setAttribute('aria-label', `Remove ${row.title} from recent`);
+  discard.textContent = '×';
+  discard.addEventListener('click', async () => {
+    if (confirm(`Remove “${row.title}” from Recent?`)) await discardArchived(row.id);
+  });
+
+  wrap.append(open, discard);
+  return wrap;
 }
 
 function textColumn(draft) {
@@ -686,8 +775,9 @@ function renderUnsent(result) {
     try {
       await navigator.clipboard.writeText(result.payload);
       launchUri(result.uri);
-      // The retry landed — the draft this bottle came from can go now,
-      // same as if the first send had succeeded.
+      // Archive the bottle for safety-net purposes and drop the draft — same
+      // as if the first send had succeeded.
+      await archiveBottle(currentSnapshot()).catch(() => {});
       if (state.draftId) {
         const id = state.draftId;
         state.draftId = null;
@@ -730,10 +820,16 @@ async function saveBottle() {
     // (sent === false) still has the parcel in memory and offers a retry,
     // so the draft has to stay until either that retry succeeds or the
     // user discards it by hand from the home screen.
-    if (state.draftId && result.sent !== false) {
-      const id = state.draftId;
-      state.draftId = null;
-      await removeDraft(id).catch(() => {});
+    if (result.sent !== false) {
+      // Copy the bottle into the archive first, so a vault that quietly
+      // dropped the note still leaves the phone with the bottle. Falls off
+      // the tail of the ring on the next save.
+      await archiveBottle(currentSnapshot()).catch(() => {});
+      if (state.draftId) {
+        const id = state.draftId;
+        state.draftId = null;
+        await removeDraft(id).catch(() => {});
+      }
     }
     go('saved');
   } catch (err) {
@@ -896,7 +992,7 @@ $('#btn-save-folders').addEventListener('click', () => {
 /* Split by screen: home shows drafts + the gear's setup badge (which
  * depends on vault status), settings shows the vault card, the folders
  * card, and lets the OCR card refresh itself. */
-onEnter('home', () => { renderDraftsCard(); refreshSettingsBadge(); });
+onEnter('home', () => { renderDraftsCard(); renderRecentCard(); refreshSettingsBadge(); });
 onEnter('settings', () => { renderVaultCard(); renderFoldersCard(); });
 
 /* ── Offline OCR status ─────────────────────────────────────────────── */

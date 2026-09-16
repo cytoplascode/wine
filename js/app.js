@@ -1112,7 +1112,10 @@ $('#btn-settings-back').addEventListener('click', goBack);
 $('#btn-capture-back').addEventListener('click', goBack);
 $('#btn-crop-back').addEventListener('click', goBack);
 $('#btn-crop-done').addEventListener('click', flattenAndReview);
-$('#btn-review-back').addEventListener('click', goBack);
+// The review screen is a "wine page" — leaving it goes home, never back to
+// the capture-and-crop trail that led to it. Re-cropping is done through the
+// pencil on the review screen itself; back is for closing this wine.
+$('#btn-review-back').addEventListener('click', () => go('home'));
 ocrCacheBtn.addEventListener('click', () => {
   ocrCacheBtn.hidden = true;
   toast('Downloading the recognition engine…');

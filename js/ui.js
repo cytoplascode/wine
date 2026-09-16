@@ -93,7 +93,17 @@ window.addEventListener('popstate', (event) => {
 
   const depth = event.state && typeof event.state.depth === 'number' ? event.state.depth : 0;
   const target = nav.pop(depth);
-  if (target) render(target.screen, target.arg);
+  if (!target) return;
+  // The review screen is a "wine page": leaving it means closing this wine,
+  // never stepping back into the capture-and-crop trail that led to it. The
+  // in-app back arrow already routes to home; the phone's system back button
+  // fires popstate here, so redirect that too when it would otherwise land on
+  // an intermediate crop or capture entry.
+  if (document.body.dataset.screen === 'review' && target.screen !== 'home') {
+    go('home');
+    return;
+  }
+  render(target.screen, target.arg);
 });
 
 /**

@@ -4,7 +4,10 @@ All numbers from `node eval/run.mjs`. "Unflattened" means the extractor got the
 raw photo with no human crop and no cylindrical unwrap — the zero-help floor.
 Scoring rules: `eval/data/README.md`.
 
-## Smoke set: 3 real dinner-table photos (Babunidze, Tezi, Mellot)
+## Smoke set: 8 real dinner-table photos
+
+Babunidze, Tezi, Mellot, Unico, Shaverde, Nimbi, Aladasturi, Papari Valley —
+the user's own phone photos, labelled only with what is printed on the label.
 
 ### Tesseract baseline (`--langs eng+fra`, unflattened) — 2026-09-17
 
@@ -39,3 +42,28 @@ Two distinct failure classes, which matter for what to fix:
 2. **Attribution** — when a name *is* read, the winemaker/wine-name heuristics
    can assign it to the wrong slot. This is fixable independently of the OCR
    engine and will show up as a gap between `sim` and `acc` on the big slice.
+
+### Tesseract baseline, 8 photos (`--langs eng+fra`, unflattened) — 2026-09-17
+
+```
+rows: 8   scored fields: 40   overall:  18%
+field         n   acc   sim
+winery         7   14%   14%
+wine           8    0%    2%
+vintage        6   50%   50%
+region         3    0%    0%
+country        6   17%   17%
+appellation    2    0%    0%
+grapes         8   25%   25%
+median 1193 ms/image
+```
+
+Same 18% as the 3-photo run, so the floor is stable. The extra photos sharpen
+the diagnosis: on Shaverde and Papari Valley the *small italic body copy* was
+read nearly verbatim ("micro-zone of Kakheti, this wine reflects the heritage…",
+"has passed through three terraces of…") while the large display type —
+SHAVERDE, the *Papari Valley* script, NIMBI, UNICO — was not read at all. The
+parser's biggest-line heuristic then had nothing to grab and promoted body
+sentences into Winemaker / WineName. Fine print yes, stylised headline no:
+that is the recogniser ceiling, and it is exactly the text a wine label leads
+with.

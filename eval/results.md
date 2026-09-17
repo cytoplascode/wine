@@ -67,3 +67,68 @@ parser's biggest-line heuristic then had nothing to grab and promoted body
 sentences into Winemaker / WineName. Fine print yes, stylised headline no:
 that is the recogniser ceiling, and it is exactly the text a wine label leads
 with.
+
+## Phone probe — Pixel 9 Pro, Chrome 153 (2026-09-17)
+
+```
+LanguageModel: false   legacyAi: false        → no built-in Prompt API; Gemini Nano
+                                                 from a PWA is not available. Closed.
+webgpu: true           requestAdapter(): null → GPU adapter not handed out on a
+                                                 default request. Probe v2 retries with
+                                                 power preferences + fallback adapter.
+deviceMemoryGB: 8                              (Chrome caps this value; ignore)
+```
+
+Consequence: until probe v2 says otherwise, the phone is a **WASM-only**
+target. That makes CPU-cheap recognisers (PP-OCR) relatively more attractive
+than a 230M-param VLM, whatever the accuracy numbers say.
+
+## PP-OCRv4 (DB det + CRNN rec) via ONNX Runtime Web, WASM — 2026-09-17
+
+Models: `ch_PP-OCRv4_det_infer` (4.5 MB) + `en_PP-OCRv4_rec` (7.3 MB), from
+npm `paddle-ocr-onnx-models` (Apache-2.0). Runtime `onnxruntime-web` 1.29,
+CPU-only WASM build (3.6 MB gzipped). No human crop, no unwrap.
+
+```
+rows: 8   scored fields: 40   overall:  45%      (Tesseract: 18%)
+field         n   acc   sim
+winery         7   71%   66%                     (14%)
+wine           8    0%    1%                     ( 0%)
+vintage        6  100%  100%                     (50%)
+region         3    0%    0%
+country        6   67%   67%                     (17%)
+appellation    2    0%    0%
+grapes         8   38%   38%                     (25%)
+median  1036 ms/image  threads=4  (this sandbox's CPU)
+median  2347 ms/image  threads=1  (what GitHub Pages gets without a COOP/COEP shim)
+```
+
+What the raw text now contains — the words Tesseract could not read at all:
+
+```
+BABUNIDZE | WINES | KHIKHVI | Qvevri Amber Dry Wine | Kakheti, Georgia
+TEZI WINERY | 2022 | LIMITED EDITION | Qvevri Dry Amber | Produced in Georgia
+JOSEPH MELLOT | LA GAUPIERE | SAUVIGNON | BLANC | 2024
+UNICO | BLEND SAPERAVI | 2022
+SHAVERDE | Gulordaia tamily | Winery | MUKUZANI | Dry Red Georgian Wine | 2024
+ESTD | 2024 | NIMBI | RKATSITELI | WHITE DRY | WINE | INTENTO COLLECTION | PRODUCT OF GEORGIA
+11% | 2024 | Aladasturi Rose | 750ml
+Papari Valley | 3 Qvevri Terraces | Medium-Sweet | … | Produced in Georgia
+```
+
+Every producer and wine name is present as a clean line. So the picture has
+inverted: **recognition is no longer the bottleneck, attribution is.** The
+wine name is in the text on all 8 photos and the parser scores it on 0 —
+it picks "LIMITED EDITION", "ESTD", "attisdid" (a body-copy fragment), or
+nothing. Winery misses are the same class: "WHITE DRY" over NIMBI, "OTERUX
+DUGIENOS" (the appellation line, misread) over JOSEPH MELLOT. These are
+parser rules, tunable against this harness with the recogniser held fixed.
+
+Recogniser weaknesses that remain, for the record: the *en* dictionary has
+no accents (GAUPIÈRE → GAUPIERE; harmless, scoring normalises); script and
+italic body copy come through as fragments ("eracesfTro", "attisdid");
+"Gulordava Family" → "Gulordaia tamily". None of those touch the name fields.
+
+Detection came free: the union of DB boxes is a tight label bounding box on
+all 8 photos (recorded per row as `meta.box` in the JSONL) — the input a
+future auto-placed crop would start from.

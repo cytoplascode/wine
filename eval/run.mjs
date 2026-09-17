@@ -13,10 +13,10 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '/opt/node22/lib/node_modules/playwright/index.mjs';
 import { score, formatTable } from './score.mjs';
+import { serve } from './serve.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '..');
@@ -42,14 +42,8 @@ const rows = fs.readFileSync(labelsPath, 'utf8')
   .slice(0, limit);
 if (!rows.length) { console.error('No rows with an existing image.'); process.exit(2); }
 
-const server = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], {
-  cwd: repo, stdio: 'ignore',
-});
+const server = await serve(repo, port);
 const base = `http://127.0.0.1:${port}`;
-for (let i = 0; i < 50; i += 1) {
-  try { if ((await fetch(`${base}/eval/harness.html`)).ok) break; } catch { /* not up yet */ }
-  await new Promise((r) => setTimeout(r, 100));
-}
 
 const browser = await chromium.launch({
   executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
@@ -64,7 +58,7 @@ const q = new URLSearchParams({ extractor, options: JSON.stringify(options) });
 await page.goto(`${base}/eval/harness.html?${q}`);
 await page.waitForFunction(() => window.harnessReady || window.harnessError);
 const harnessError = await page.evaluate(() => window.harnessError);
-if (harnessError) { console.error(harnessError); await browser.close(); server.kill(); process.exit(1); }
+if (harnessError) { console.error(harnessError); await browser.close(); server.close(); process.exit(1); }
 
 const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 fs.mkdirSync(path.join(repo, 'eval/out'), { recursive: true });
@@ -81,7 +75,8 @@ for (const [i, row] of rows.entries()) {
     result = { fields: {}, rawText: '', ms: null, error: String(err.message || err) };
   }
   const { file, ...truth } = row;
-  const record = { file, truth, pred: result.fields || {}, rawText: result.rawText || '', ms: result.ms, error: result.error };
+  const { fields, rawText, ms, error, ...meta } = result;
+  const record = { file, truth, pred: fields || {}, rawText: rawText || '', ms, error, meta };
   out.write(`${JSON.stringify(record)}\n`);
   scored.push(record);
   process.stderr.write(`\r${i + 1}/${rows.length}  ${file}  ${result.ms ?? '—'} ms${result.error ? '  ERROR' : ''}     `);
@@ -90,7 +85,7 @@ for (const [i, row] of rows.entries()) {
 process.stderr.write('\n');
 out.end();
 await browser.close();
-server.kill();
+server.close();
 
 const summary = score(scored);
 const times = scored.map((r) => r.ms).filter((x) => typeof x === 'number').sort((a, b) => a - b);

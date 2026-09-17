@@ -7,9 +7,11 @@
   "scripts": {
     "test": "node --test",
     "serve": "python3 -m http.server 8000",
-    "eval": "node eval/run.mjs"
+    "eval": "node eval/run.mjs",
+    "eval:models": "node eval/fetch-models.mjs"
   },
   "devDependencies": {
-    "@huggingface/transformers": "^3.8.1"
+    "@huggingface/transformers": "^3.8.1",
+    "onnxruntime-web": "^1.29.0"
   }
 }

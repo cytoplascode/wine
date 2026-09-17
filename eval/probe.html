@@ -1,35 +1,58 @@
 <!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Built-in AI probe</title>
+<title>Built-in AI / WebGPU probe</title>
 <style>
   body { font: 16px/1.4 system-ui, sans-serif; margin: 16px; }
-  textarea { width: 100%; height: 40vh; font: 13px/1.3 ui-monospace, monospace; }
+  textarea { width: 100%; height: 45vh; font: 13px/1.3 ui-monospace, monospace; }
   button { font: inherit; padding: 10px 14px; }
+  p.hint { color: #666; font-size: 14px; }
 </style>
-<h1>Chrome built-in AI probe</h1>
-<p>Open this on the phone, tap Run, then copy the result back into the chat.</p>
+<h1>Built-in AI / WebGPU probe (v2)</h1>
+<p>Open on the phone, tap Run, copy the result back into the chat.</p>
+<p class="hint">If <code>gpuAdapter</code> stays null, also open <code>chrome://gpu</code> and read the
+<b>WebGPU</b> line under "Graphics Feature Status".</p>
 <button id="run">Run</button>
 <textarea id="out" readonly></textarea>
 <script>
   const out = document.getElementById('out');
+  const tryAdapter = async (opts) => {
+    try {
+      const a = await navigator.gpu.requestAdapter(opts);
+      if (!a) return null;
+      const info = a.info || (a.requestAdapterInfo ? await a.requestAdapterInfo() : {});
+      return {
+        vendor: info.vendor, architecture: info.architecture, device: info.device,
+        description: info.description, isFallback: a.isFallbackAdapter ?? null,
+        features: [...a.features].slice(0, 12),
+        maxBufferMB: Math.round(a.limits.maxBufferSize / 1048576),
+        maxStorageMB: Math.round(a.limits.maxStorageBufferBindingSize / 1048576),
+      };
+    } catch (e) { return { error: String(e) }; }
+  };
   document.getElementById('run').onclick = async () => {
     const r = {
+      probe: 2,
       ua: navigator.userAgent,
       LanguageModel: 'LanguageModel' in self,
       legacyAi: !!(self.ai && self.ai.languageModel),
       webgpu: 'gpu' in navigator,
-      deviceMemoryGB: navigator.deviceMemory ?? null,
+      wgslFeatures: navigator.gpu ? [...(navigator.gpu.wgslLanguageFeatures || [])].length : null,
+      crossOriginIsolated: self.crossOriginIsolated,
+      sharedArrayBuffer: typeof SharedArrayBuffer !== 'undefined',
+      hardwareConcurrency: navigator.hardwareConcurrency,
+      wasmSimd: WebAssembly.validate(new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,10,10,1,8,0,65,0,253,15,253,98,11])),
     };
     try {
       if (r.LanguageModel) {
         r.availabilityText = await LanguageModel.availability();
         r.availabilityImage = await LanguageModel.availability({ expectedInputs: [{ type: 'image' }] });
-        r.params = await LanguageModel.params?.().catch((e) => String(e));
       }
       if (r.webgpu) {
-        const a = await navigator.gpu.requestAdapter();
-        r.gpuAdapter = a ? { features: [...a.features], limits: { maxBufferSize: a.limits.maxBufferSize } } : null;
+        r.gpuAdapter = await tryAdapter();
+        r.gpuAdapterHighPerf = await tryAdapter({ powerPreference: 'high-performance' });
+        r.gpuAdapterLowPower = await tryAdapter({ powerPreference: 'low-power' });
+        r.gpuAdapterFallback = await tryAdapter({ forceFallbackAdapter: true });
       }
     } catch (e) { r.error = String(e); }
     out.value = JSON.stringify(r, null, 2);

@@ -5,9 +5,19 @@ parser changes are judged on numbers rather than on three photos by eye.
 
 ```
 npm run eval -- --extractor tesseract --langs eng+fra
+npm run eval:models                                    # once: PP-OCR models from npm
+npm run eval -- --extractor ppocr --options '{"threads":4}'
+npm run eval -- --extractor ppocr --options '{"threads":1}'          # GitHub-Pages-without-COOP number
 npm run eval -- --extractor florence --options '{"device":"wasm"}'
 npm run eval -- --extractor florence --limit 20 --options '{"remote":true}'   # laptop, HF reachable
 ```
+
+The harness is served by `eval/serve.mjs`, which sends COOP/COEP headers so
+ONNX Runtime's threaded WASM build can use SharedArrayBuffer. GitHub Pages
+cannot send those headers, so a shipped app either takes the single-thread
+number or installs a `coi-serviceworker` shim — the threads=1 run is there
+to keep that cost visible. `node eval/serve.mjs 8765` runs the server alone
+(binds 0.0.0.0, handy for opening `probe.html` from a phone on the same wifi).
 
 Flags: `--extractor <name>` (a module in `extractors/`), `--limit N`,
 `--langs eng+fra` (Tesseract), `--options '<json>'` (passed to the extractor),
@@ -26,8 +36,18 @@ code path the phone uses is what gets timed.
 
 ## Models (`eval/models/`, gitignored)
 
-transformers.js resolves a model id against `/eval/models/<id>/`. For the
-Florence-2 candidate, mirror the HuggingFace repo **onnx-community/Florence-2-base-ft**
+### PP-OCR (`eval/models/ppocr/`)
+
+`npm run eval:models` fetches the detector, recogniser and classifier from
+the npm package `paddle-ocr-onnx-models` (Apache-2.0, RapidOCR's ONNX
+conversions) — ~12.5 MB total. `eval/extractors/ppocr.mjs` implements the
+DB → crop → CRNN pipeline; the pure parts (map → boxes, CTC decode, the
+`en_dict` charset) live in `eval/ppocr-post.mjs` and are unit-tested.
+
+### Florence-2 (`eval/models/Florence-2-base-ft/`)
+
+
+transformers.js resolves a model id against `/eval/models/<id>/`. Mirror the HuggingFace repo **onnx-community/Florence-2-base-ft**
 into `eval/models/Florence-2-base-ft/`:
 
 ```

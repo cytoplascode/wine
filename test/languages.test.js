@@ -47,3 +47,14 @@ test('the size shown to the user adds up the chosen packs', () => {
   assert.equal(totalMegabytes(['eng', 'fra']), expected);
   assert.equal(totalMegabytes([]), 0);
 });
+
+test('the engine choice defaults to PP-OCR and rejects unknown codes', async () => {
+  const { ENGINES, DEFAULT_ENGINE, getEngine, setEngine } = await import('../js/engine.js');
+  assert.deepEqual(ENGINES.map((e) => e.code), ['ppocr', 'tesseract']);
+  assert.equal(DEFAULT_ENGINE, 'ppocr');
+  // Node has no localStorage, the same situation as a locked-down browser:
+  // the default answers, and a choice is still validated on the way through.
+  assert.equal(getEngine(), 'ppocr');
+  assert.equal(setEngine('tesseract'), 'tesseract');
+  assert.equal(setEngine('bogus'), 'ppocr');
+});

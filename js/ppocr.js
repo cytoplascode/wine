@@ -1,0 +1,203 @@
+/* PP-OCR on the device: a DB text detector and a CRNN recogniser (PaddleOCR
+ * v4, Apache-2.0) run by ONNX Runtime Web on WebAssembly.
+ *
+ * Everything is vendored under ./vendor/ppocr, so no request ever leaves the
+ * phone: the runtime loader, its wasm core (gzipped, inflated here with
+ * DecompressionStream) and the two models are local files served from the
+ * cache. This module is shared verbatim by the app and by the eval harness,
+ * so the numbers in eval/results.md are measured on exactly this code.
+ *
+ * Preprocessing follows PaddleOCR/RapidOCR: the models were trained on cv2
+ * BGR input, the detector normalised with ImageNet mean/std, the recogniser
+ * with (x/255 − 0.5)/0.5. Detected boxes are cut out with the app's own
+ * warpQuad so a tilted line arrives upright, then decoded greedily.
+ */
+
+import { warpQuad } from './warp.js';
+import {
+  EN_CHARSET, detInputSize, recInputWidth, boxesFromMap, orderBoxes, ctcDecode,
+} from './ppocr-post.js';
+
+const DEFAULT_VENDOR = new URL('../vendor/ppocr/', import.meta.url).href;
+
+export const FILES = {
+  loader: 'ort.wasm.min.mjs',
+  threads: 'ort-wasm-simd-threaded.mjs',
+  wasm: 'ort-wasm-simd-threaded.wasm.gz',
+  det: 'ch_PP-OCRv4_det_infer.onnx',
+  rec: 'en_PP-OCRv4_rec.onnx',
+};
+
+/** Beyond four, the little cores on a phone slow the pool down more than they help. */
+const MAX_THREADS = 4;
+
+const DET_MEAN = [0.406, 0.456, 0.485]; // BGR order of ImageNet RGB means
+const DET_STD = [0.225, 0.224, 0.229];
+const REC_MEAN = [0.5, 0.5, 0.5];
+const REC_STD = [0.5, 0.5, 0.5];
+
+/** The detector's long side; the recogniser crops from a sharper copy. */
+const DET_LIMIT = 960;
+const REC_LIMIT = 1600;
+
+let settings = { vendor: DEFAULT_VENDOR, threads: null };
+let loaded = null;
+
+/**
+ * Override where the files come from or how many threads to use. The eval
+ * harness points `vendor` at the same folder over its own server and pins
+ * `threads` to make the single-core number reproducible.
+ */
+export function configure(next) {
+  settings = { ...settings, ...next };
+  loaded = null;
+}
+
+/** How many threads this page can use: needs SharedArrayBuffer, which
+ *  needs cross-origin isolation (the service worker supplies the headers). */
+export function threadCount() {
+  if (settings.threads) return settings.threads;
+  if (!self.crossOriginIsolated || typeof SharedArrayBuffer === 'undefined') return 1;
+  return Math.max(1, Math.min(MAX_THREADS, navigator.hardwareConcurrency || 1));
+}
+
+async function fetchBytes(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`${response.status} fetching ${url.split('/').pop()}`);
+  return response;
+}
+
+async function inflate(response) {
+  const stream = response.body.pipeThrough(new DecompressionStream('gzip'));
+  return new Response(stream).arrayBuffer();
+}
+
+async function load(onProgress) {
+  const { vendor } = settings;
+  const report = (label) => onProgress && onProgress({ status: label, progress: 0 });
+
+  report('Starting the recognition engine…');
+  const ort = await import(`${vendor}${FILES.loader}`);
+  ort.env.wasm.wasmPaths = vendor;
+  ort.env.wasm.wasmBinary = await inflate(await fetchBytes(`${vendor}${FILES.wasm}`));
+  ort.env.wasm.numThreads = threadCount();
+
+  report('Loading the text models…');
+  const opts = { executionProviders: ['wasm'] };
+  const [det, rec] = await Promise.all([
+    fetchBytes(`${vendor}${FILES.det}`).then((r) => r.arrayBuffer()).then((b) => ort.InferenceSession.create(b, opts)),
+    fetchBytes(`${vendor}${FILES.rec}`).then((r) => r.arrayBuffer()).then((b) => ort.InferenceSession.create(b, opts)),
+  ]);
+  return { ort, det, rec, threads: ort.env.wasm.numThreads };
+}
+
+function getEngine(onProgress) {
+  loaded ||= load(onProgress).catch((err) => { loaded = null; throw err; });
+  return loaded;
+}
+
+/** RGBA ImageData → BGR CHW float32 with the given per-channel mean/std. */
+function toTensorBGR(ort, image, mean, std) {
+  const { width, height, data } = image;
+  const plane = width * height;
+  const out = new Float32Array(3 * plane);
+  for (let i = 0; i < plane; i += 1) {
+    const r = data[i * 4] / 255; const g = data[i * 4 + 1] / 255; const b = data[i * 4 + 2] / 255;
+    out[i] = (b - mean[0]) / std[0];
+    out[plane + i] = (g - mean[1]) / std[1];
+    out[2 * plane + i] = (r - mean[2]) / std[2];
+  }
+  return new ort.Tensor('float32', out, [1, 3, height, width]);
+}
+
+/* Plain drawImage, deliberately without imageSmoothingQuality = 'high': the
+ * sharper filter changed the detector's boxes and the recogniser's spacing
+ * on the smoke set and cost 15 points (eval/results.md). */
+function drawTo(source, width, height) {
+  const canvas = document.createElement('canvas');
+  canvas.width = width; canvas.height = height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(source, 0, 0, width, height);
+  return ctx.getImageData(0, 0, width, height);
+}
+
+function resample(imageData, width, height) {
+  const src = document.createElement('canvas');
+  src.width = imageData.width; src.height = imageData.height;
+  src.getContext('2d').putImageData(imageData, 0, 0);
+  return drawTo(src, width, height);
+}
+
+/** Let the progress overlay paint between two long synchronous runs. */
+const breathe = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+/**
+ * Read a label from a canvas or ImageBitmap.
+ * Returns `{ text, lines }` in the source's pixel coordinates, each line
+ * carrying the box the producer heuristic needs to tell a big name from small
+ * print — the same shape the Tesseract path produces.
+ */
+export async function recognize(source, onProgress, options = {}) {
+  const { thresh = 0.3, boxThresh = 0.6, unclip = 1.5 } = options;
+  const { ort, det, rec } = await getEngine(onProgress);
+  const report = (progress, status) => onProgress && onProgress({ status, progress });
+
+  const full = { width: source.width, height: source.height };
+  const size = detInputSize(full.width, full.height, DET_LIMIT);
+  const detImage = drawTo(source, size.width, size.height);
+
+  report(0.05, 'Finding the text…');
+  await breathe();
+  const t0 = performance.now();
+  const detOut = await det.run({ x: toTensorBGR(ort, detImage, DET_MEAN, DET_STD) });
+  const prob = detOut[det.outputNames[0]].data;
+  const detMs = performance.now() - t0;
+
+  const boxes = orderBoxes(boxesFromMap(prob, size.width, size.height, { thresh, boxThresh, unclip }));
+
+  // Recognise from a copy at a size where the smallest box is still legible.
+  const recScale = Math.min(1, REC_LIMIT / Math.max(full.width, full.height));
+  const recSource = drawTo(source, Math.round(full.width * recScale), Math.round(full.height * recScale));
+  const sx = recSource.width / size.width;
+  const sy = recSource.height / size.height;
+
+  const lines = [];
+  const t1 = performance.now();
+  for (let i = 0; i < boxes.length; i += 1) {
+    const box = boxes[i];
+    report(0.2 + (0.8 * i) / boxes.length, `Reading line ${i + 1} of ${boxes.length}…`);
+    if (i % 4 === 0) await breathe();
+
+    const quad = box.corners.map((c) => ({ x: c.x * sx, y: c.y * sy }));
+    const bw = Math.max(1, Math.round(box.w * sx));
+    const bh = Math.max(1, Math.round(box.h * sy));
+    const warped = warpQuad(recSource, quad, bw, bh);
+    const patch = new ImageData(warped.data, warped.width, warped.height);
+
+    const recIn = resample(patch, recInputWidth(bw, bh), 48);
+    const out = await rec.run({ x: toTensorBGR(ort, recIn, REC_MEAN, REC_STD) });
+    const tensor = out[rec.outputNames[0]];
+    const [, T, C] = tensor.dims;
+    const { text, confidence } = ctcDecode(tensor.data, T, C, EN_CHARSET);
+    if (!text) continue;
+
+    const ys = quad.map((p) => p.y); const xs = quad.map((p) => p.x);
+    lines.push({
+      text,
+      confidence,
+      top: Math.min(...ys) / recScale,
+      height: (Math.max(...ys) - Math.min(...ys)) / recScale,
+      left: Math.min(...xs) / recScale,
+      right: Math.max(...xs) / recScale,
+      score: box.score,
+    });
+  }
+  const recMs = performance.now() - t1;
+
+  return {
+    text: lines.map((l) => l.text).join('\n'),
+    lines,
+    timing: { det: Math.round(detMs), rec: Math.round(recMs), boxes: boxes.length },
+    threads: ort.env.wasm.numThreads,
+  };
+}

@@ -10,7 +10,7 @@
  * once downloaded, since a vendored build never changes under its own name.
  */
 
-const SHELL_CACHE = 'shell-v5';
+const SHELL_CACHE = 'shell-v6';
 
 /* The OCR cache is deliberately *not* versioned with the shell. Those files are
  * vendored and immutable — a new build of Tesseract would arrive under a new
@@ -34,6 +34,9 @@ const SHELL_ASSETS = [
   './js/exif.js',
   './js/warp.js',
   './js/ocr.js',
+  './js/engine.js',
+  './js/ppocr.js',
+  './js/ppocr-post.js',
   './js/schema.js',
   './js/form.js',
   './js/parse.js',
@@ -63,11 +66,48 @@ const OCR_CORE = [
 // pushing onto their phone.
 const KNOWN_LANGS = ['eng', 'fra', 'ita', 'spa', 'por', 'deu', 'kat'];
 
-function ocrAssets(langs) {
+// PP-OCR: the ONNX Runtime loader, its wasm core (gzipped) and the two
+// models. Same deal — immutable under these names, fetched on request.
+const PPOCR_ASSETS = [
+  './vendor/ppocr/ort.wasm.min.mjs',
+  './vendor/ppocr/ort-wasm-simd-threaded.mjs',
+  './vendor/ppocr/ort-wasm-simd-threaded.wasm.gz',
+  './vendor/ppocr/ch_PP-OCRv4_det_infer.onnx',
+  './vendor/ppocr/en_PP-OCRv4_rec.onnx',
+];
+
+function ocrAssets(langs, engine) {
+  if (engine === 'ppocr') return PPOCR_ASSETS;
   const chosen = (Array.isArray(langs) ? langs : []).filter((l) => KNOWN_LANGS.includes(l));
   const packs = (chosen.length ? chosen : ['eng'])
     .map((lang) => `./vendor/tesseract/${lang}.traineddata.gz`);
   return [...OCR_CORE, ...packs];
+}
+
+/* Cross-origin isolation, supplied from here.
+ *
+ * ONNX Runtime's threaded build needs SharedArrayBuffer, which the browser
+ * only enables on a page that carries COOP/COEP headers. GitHub Pages cannot
+ * send custom headers, but a service worker can add them to every response
+ * it hands the page — the same trick as the coi-serviceworker shim. The
+ * page becomes isolated on its next load after this worker takes control;
+ * app.js reloads once at startup to get there straight away.
+ *
+ * `credentialless` rather than `require-corp` so a cross-origin fetch that
+ * already answers CORS (the reverse geocoder) keeps working without every
+ * such resource also needing a CORP header. Set INJECT_ISOLATION to false to
+ * back this out: recognition then runs single-threaded and nothing else
+ * changes. */
+const INJECT_ISOLATION = true;
+
+function withIsolation(response) {
+  if (!INJECT_ISOLATION || !response || response.status === 0) return response;
+  const headers = new Headers(response.headers);
+  headers.set('Cross-Origin-Opener-Policy', 'same-origin');
+  headers.set('Cross-Origin-Embedder-Policy', 'credentialless');
+  return new Response(response.body, {
+    status: response.status, statusText: response.statusText, headers,
+  });
 }
 
 self.addEventListener('install', (event) => {
@@ -106,7 +146,9 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (request.method !== 'GET') return;
-  event.respondWith(isVendorAsset(request.url) ? cacheFirst(request) : networkFirst(request));
+  event.respondWith(
+    (isVendorAsset(request.url) ? cacheFirst(request) : networkFirst(request)).then(withIsolation),
+  );
 });
 
 /** Received a photo shared from another app. Stash it and redirect. */
@@ -207,9 +249,9 @@ async function networkFirst(request) {
 self.addEventListener('message', (event) => {
   const data = event.data || {};
   if (data.type === 'cache-ocr') {
-    event.waitUntil(cacheOcrAssets(event.source, data.langs));
+    event.waitUntil(cacheOcrAssets(event.source, data.langs, data.engine));
   } else if (data.type === 'ocr-status') {
-    event.waitUntil(reportOcrStatus(event.source, data.langs));
+    event.waitUntil(reportOcrStatus(event.source, data.langs, data.engine));
   }
 });
 
@@ -221,13 +263,13 @@ function isVendorAsset(url) {
  *  older cache name still counts as downloaded. */
 const alreadyCached = (asset) => caches.match(asset);
 
-async function cacheOcrAssets(client, langs) {
-  const assets = ocrAssets(langs);
+async function cacheOcrAssets(client, langs, engine) {
+  const assets = ocrAssets(langs, engine);
   const cache = await caches.open(OCR_CACHE);
   let done = 0;
 
   const post = (extra) => client && client.postMessage({
-    type: 'ocr-progress', done, total: assets.length, ...extra,
+    type: 'ocr-progress', engine, done, total: assets.length, ...extra,
   });
 
   post({});
@@ -244,13 +286,14 @@ async function cacheOcrAssets(client, langs) {
   post({ complete: true });
 }
 
-async function reportOcrStatus(client, langs) {
-  const assets = ocrAssets(langs);
+async function reportOcrStatus(client, langs, engine) {
+  const assets = ocrAssets(langs, engine);
   const present = await Promise.all(assets.map(alreadyCached));
   const done = present.filter(Boolean).length;
   if (client) {
     client.postMessage({
       type: 'ocr-progress',
+      engine,
       done,
       total: assets.length,
       complete: done === assets.length,

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   EN_CHARSET, detInputSize, recInputWidth, components, convexHull, minAreaRect,
   rectCorners, unclipRect, boxesFromMap, orderBoxes, ctcDecode,
-} from '../eval/ppocr-post.mjs';
+} from '../js/ppocr-post.js';
 
 test('the English charset has 97 classes with blank first and space last', () => {
   assert.equal(EN_CHARSET.length, 97);

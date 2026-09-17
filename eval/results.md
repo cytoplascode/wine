@@ -215,3 +215,29 @@ Remaining misses, and why they are not parser bugs:
 - **Papari, Shaverde** (grapes): Saperavi is not printed on the front.
   Mukuzani is a Saperavi-only PDO, so an *appellation → implied grape*
   table would fill Shaverde; Papari needs the back label.
+
+## Shipped: PP-OCR in the app — 2026-09-17
+
+The engine moved into the app as `js/ppocr.js` (runtime and models vendored
+under `vendor/ppocr/`, 16 MB, the wasm core gzipped to 3.6 MB and inflated
+with DecompressionStream) and the eval extractor became a wrapper over that
+same module. Re-measured through it:
+
+```
+rows: 8   scored fields: 40   overall:  78%   median 1049 ms/image  threads=4
+```
+
+Identical to the pre-integration run, after one regression caught on the way:
+setting `imageSmoothingQuality = 'high'` on the resampling canvases — an
+innocent-looking default elsewhere in the app — changed the detector's boxes
+("SHAVERDE" → "SHAV ERDE Hay") and the recogniser's spacing ("Produced
+inGeorgia") and cost 15 points (78% → 63%). Plain `drawImage` is what the
+models were measured with, and what ships.
+
+Smoke test of the shipped path in headless Chromium behind a plain static
+server (no COOP/COEP headers, as GitHub Pages sends): the service worker's
+injected headers make the page cross-origin isolated after one automatic
+reload; the download card fetches the five files; recognition runs on 4
+threads at 685 ms warm (2.1 s cold, including the model load); a second
+launch touches the network for nothing. The Tesseract engine remains
+selectable and still reads.

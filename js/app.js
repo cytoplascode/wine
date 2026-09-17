@@ -28,6 +28,8 @@ import { readCaptureDate, readCaptureLocation, localIsoDate } from './exif.js';
 import {
   LANGUAGES, MAX_ACTIVE, getLanguages, setLanguages, toTesseractLangs, totalMegabytes,
 } from './languages.js';
+import { ENGINES, getEngine, setEngine } from './engine.js';
+import { threadCount } from './ppocr.js';
 
 /* ── Photo handling ─────────────────────────────────────────────────── */
 
@@ -137,6 +139,13 @@ const PHASES = {
   'recognizing text': 'Reading the label…',
 };
 
+/** Tesseract reports machine statuses that PHASES translates; PP-OCR
+ *  reports a sentence ready to show. */
+function progressLabel(m, engine) {
+  if (engine === 'ppocr') return m.status || 'Working…';
+  return PHASES[m.status] || 'Working…';
+}
+
 function showOcrProgress(fraction, label) {
   $('#ocr-progress').hidden = false;
   $('#ocr-progress .bar > i').style.width = `${Math.round(fraction * 100)}%`;
@@ -210,9 +219,10 @@ async function runOcr() {
   renderRawText();
   showOcrProgress(0, 'Starting the recognition engine…');
   try {
+    const engine = getEngine();
     const result = await ocr.recognize(state.flattened.canvas, (m) => {
-      showOcrProgress(m.progress || 0, PHASES[m.status] || 'Working…');
-    }, toTesseractLangs(getLanguages()));
+      showOcrProgress(m.progress || 0, progressLabel(m, engine));
+    }, toTesseractLangs(getLanguages()), engine);
     state.ocrText = result.text;
     state.ocrLines = result.lines;
     renderRawText();
@@ -285,7 +295,7 @@ async function runBackOcrIfPending() {
   try {
     const result = await ocr.recognize(state.backFlattened.canvas, (m) => {
       showOcrProgress(m.progress || 0, 'Reading the back label…');
-    }, toTesseractLangs(getLanguages()));
+    }, toTesseractLangs(getLanguages()), getEngine());
     state.backOcrText = result.text;
     state.backOcrLines = result.lines;
     renderRawText();
@@ -1002,7 +1012,13 @@ const ocrStatus = $('#ocr-status');
 const ocrBar = $('#ocr-bar');
 const ocrCacheBtn = $('#btn-cache-ocr');
 
-function renderOcrProgress({ done, total, complete, error }) {
+/** What the service worker needs to know to answer for the current engine. */
+const ocrRequest = (type) => ({ type, langs: getLanguages(), engine: getEngine() });
+
+function renderOcrProgress({ engine, done, total, complete, error }) {
+  // A report about the other engine — the answer to a status request sent
+  // before the user switched — must not repaint the card for this one.
+  if (engine && engine !== getEngine()) return;
   if (error) {
     ocrDot.dataset.state = 'err';
     ocrStatus.textContent = `Download failed — ${error}`;
@@ -1020,7 +1036,10 @@ function renderOcrProgress({ done, total, complete, error }) {
   }
   if (complete) {
     ocrDot.dataset.state = 'ok';
-    ocrStatus.textContent = 'Ready — recognition runs on this phone, offline.';
+    const threads = getEngine() === 'ppocr' ? threadCount() : 1;
+    ocrStatus.textContent = threads > 1
+      ? `Ready — recognition runs on this phone, offline, on ${threads} cores.`
+      : 'Ready — recognition runs on this phone, offline.';
     ocrBar.hidden = true;
     ocrCacheBtn.hidden = true;
     return;
@@ -1034,10 +1053,40 @@ function renderOcrProgress({ done, total, complete, error }) {
   ocrCacheBtn.hidden = done !== 0;
 }
 
+function renderEngineChips() {
+  const chips = $('#engine-chips');
+  const current = getEngine();
+  chips.textContent = '';
+
+  for (const engine of ENGINES) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = engine.label;
+    button.setAttribute('aria-pressed', String(engine.code === current));
+    button.addEventListener('click', () => {
+      if (engine.code === current) return;
+      setEngine(engine.code);
+      renderEngineChips();
+      renderLanguageChips();
+      messageServiceWorker(ocrRequest('ocr-status'));
+    });
+    chips.append(button);
+  }
+
+  const chosen = ENGINES.find((e) => e.code === current);
+  $('#engine-hint').textContent = chosen.mb
+    ? `${chosen.hint} ${chosen.mb} MB, downloaded once.`
+    : chosen.hint;
+}
+
 function renderLanguageChips() {
   const chips = $('#language-chips');
   const chosen = getLanguages();
   chips.textContent = '';
+  // Language packs are Tesseract's; PP-OCR ships one recogniser.
+  const tesseract = getEngine() === 'tesseract';
+  chips.hidden = !tesseract;
+  $('#language-hint').hidden = !tesseract;
 
   for (const language of LANGUAGES) {
     const on = chosen.includes(language.code);
@@ -1052,7 +1101,7 @@ function renderLanguageChips() {
         : [...chosen, language.code];
       setLanguages(next);
       renderLanguageChips();
-      messageServiceWorker({ type: 'ocr-status', langs: getLanguages() });
+      messageServiceWorker(ocrRequest('ocr-status'));
     });
     chips.append(button);
   }
@@ -1081,10 +1130,28 @@ async function registerServiceWorker() {
   navigator.serviceWorker.addEventListener('message', (event) => {
     if (event.data && event.data.type === 'ocr-progress') renderOcrProgress(event.data);
   });
+  // The worker adds the cross-origin-isolation headers that let recognition
+  // use several cores, but only to pages it serves — this one, on a first
+  // visit or right after an update, was served without them. Reload once
+  // the moment the worker takes control, before the user has done anything;
+  // a page that arrived through the share sheet is left alone, since its
+  // photo is being picked up right now. The flag stops any loop.
+  if (!crossOriginIsolated && !new URLSearchParams(location.search).get('share')) {
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      // An update that activates while the app is in use also fires this;
+      // reloading then would pull the screen out from under the user.
+      if (performance.now() > 5000) return;
+      let done = false;
+      try { done = sessionStorage.getItem('coi-reload') === '1'; } catch { /* fine */ }
+      if (done) return;
+      try { sessionStorage.setItem('coi-reload', '1'); } catch { /* fine */ }
+      location.reload();
+    });
+  }
   try {
     await navigator.serviceWorker.register('./sw.js');
     await navigator.serviceWorker.ready;
-    messageServiceWorker({ type: 'ocr-status', langs: getLanguages() });
+    messageServiceWorker(ocrRequest('ocr-status'));
   } catch (err) {
     ocrDot.dataset.state = 'err';
     ocrStatus.textContent = `Offline setup failed: ${err.message}`;
@@ -1102,6 +1169,7 @@ initCapture({ onPhoto: handlePhoto });
 crop.initCrop();
 buildForm();
 initFieldDrag();
+renderEngineChips();
 renderLanguageChips();
 
 $('#btn-new-bottle').addEventListener('click', newBottle);
@@ -1119,7 +1187,7 @@ $('#btn-review-back').addEventListener('click', () => go('home'));
 ocrCacheBtn.addEventListener('click', () => {
   ocrCacheBtn.hidden = true;
   toast('Downloading the recognition engine…');
-  messageServiceWorker({ type: 'cache-ocr', langs: getLanguages() });
+  messageServiceWorker(ocrRequest('cache-ocr'));
 });
 
 vaultButton.addEventListener('click', onVaultButton);

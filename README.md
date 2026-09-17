@@ -6,9 +6,9 @@ where the label photo was taken, the only thing here that ever touches the netwo
 [Where it was taken](#where-it-was-taken)).
 
 Photograph the label (or pick a photo from your gallery), drag the handles onto its edges, and
-the app unwraps the label off the curve of the bottle, reads the text with Tesseract running
-locally, guesses the fields, and lets you correct them before writing the note and its images
-straight into a folder you choose.
+the app unwraps the label off the curve of the bottle, reads the text with a recognition engine
+running locally, guesses the fields, and lets you correct them before writing the note and its
+images straight into a folder you choose.
 
 ## The note it writes
 
@@ -236,9 +236,8 @@ lives one tap in, behind the gear. A small dot on the gear says the vault still 
 attention — nothing to save into yet, or a folder handle that lapsed after a browser restart.
 
 1. Open the site and add it to your home screen.
-2. Tap **⚙** → **Download for offline use** once — the recognition engine plus the language
-   packs you picked, around 8 MB for the default English and French. After that nothing needs
-   the network again.
+2. Tap **⚙** → **Download for offline use** once — the recognition engine, about 16 MB for the
+   default PP-OCR. After that nothing needs the network again.
 3. Still in Settings, **Connect vault** — pick your vault folder, or a subfolder of it. The
    choice is remembered.
 4. Back on home, **New bottle** → photograph the label, or tap **Gallery** to use a picture
@@ -337,12 +336,29 @@ form scrolls when you hold near its top or bottom edge, so the two fields need n
 screen together. A field that cannot hold the value — a date, or a number given text — is
 never offered as a target, since it would silently blank itself.
 
-### Languages
+### Engines and languages
 
-The Settings screen (behind ⚙) has chips for English, French, Italian, Spanish, Portuguese, German and
-Georgian. All seven packs are in the repository, but only the ones you pick are downloaded for
-offline use, so the first download stays proportionate. Three at a time is the cap: each extra
-language slows recognition down.
+Two recognition engines are vendored, both running entirely on the phone; the Settings screen
+(behind ⚙) has a chip for each.
+
+**PP-OCR** is the default. It is a text *detector* (which finds every line of type, however
+large or stylised) followed by a *recogniser*, run by ONNX Runtime on WebAssembly. On the same
+eight real photos it reads the producer and wine names Tesseract skipped entirely
+(`eval/results.md` has the numbers: 78% of fields against 18%). Its recogniser is trained on
+English print, so it knows Latin letters but not accents — GAUPIÈRE comes back as GAUPIERE —
+and not Georgian script. About 16 MB, downloaded once.
+
+Recognition uses four cores when the browser allows it, which needs the page to be
+*cross-origin isolated*. GitHub Pages cannot set the headers for that, so the service worker
+adds them itself; the app reloads once, at startup, the first time the worker takes control.
+The settings card says "on 4 cores" when it worked. Without it recognition still runs, about
+twice as slowly.
+
+**Tesseract** stays selectable for the cases PP-OCR cannot do: language packs for English,
+French, Italian, Spanish, Portuguese, German and Georgian, with accents and non-Latin script.
+All seven packs are in the repository, but only the ones you pick are downloaded, so the first
+download stays proportionate. Three at a time is the cap: each extra language slows recognition
+down.
 
 ### When a scan disappoints
 

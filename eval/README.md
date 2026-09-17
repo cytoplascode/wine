@@ -46,9 +46,12 @@ code path the phone uses is what gets timed.
 
 `npm run eval:models` fetches the detector, recogniser and classifier from
 the npm package `paddle-ocr-onnx-models` (Apache-2.0, RapidOCR's ONNX
-conversions) — ~12.5 MB total. `eval/extractors/ppocr.mjs` implements the
-DB → crop → CRNN pipeline; the pure parts (map → boxes, CTC decode, the
-`en_dict` charset) live in `eval/ppocr-post.mjs` and are unit-tested.
+conversions) — ~12.5 MB total. That folder is only the source the vendored
+copy was taken from: since the engine shipped, `eval/extractors/ppocr.mjs`
+is a thin wrapper over the app's own `js/ppocr.js`, loading the runtime and
+models from `/vendor/ppocr/`, so the table measures exactly the code the
+phone runs. The pure parts (map → boxes, CTC decode, the `en_dict` charset)
+live in `js/ppocr-post.js` and are unit-tested.
 
 ### Florence-2 (`eval/models/Florence-2-base-ft/`)
 

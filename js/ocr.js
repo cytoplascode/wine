@@ -2,7 +2,9 @@
  *
  * Everything Tesseract needs is vendored under ./vendor/tesseract, so no
  * request ever leaves the phone: the worker script, the wasm core and the
- * language data are all local files served from the cache.
+ * language data are all local files served from the cache. The PP-OCR engine
+ * (./ppocr.js, vendored under ./vendor/ppocr) is reached through the same
+ * `recognize` so the rest of the app does not care which one is running.
  */
 
 /* Absolute, derived from this module's own URL. A page-relative path would
@@ -65,11 +67,20 @@ async function getWorker(langs, onProgress) {
 }
 
 /**
- * Read a flattened label.
+ * Read a flattened label with the chosen engine.
  * Returns `{ text, lines }`, where each line carries the bounding box the
- * producer heuristic needs to tell a big name from small print.
+ * producer heuristic needs to tell a big name from small print. PP-OCR lives
+ * in its own module and is imported on first use, so a phone that stays on
+ * Tesseract never loads it.
  */
-export async function recognize(canvas, onProgress, langs = 'eng') {
+export async function recognize(canvas, onProgress, langs = 'eng', engine = 'tesseract') {
+  if (engine === 'ppocr') {
+    if (!hasSimd()) {
+      throw new Error('This browser lacks WebAssembly SIMD, which the recognition engine needs');
+    }
+    const { recognize: ppocr } = await import('./ppocr.js');
+    return ppocr(canvas, onProgress);
+  }
   const worker = await getWorker(langs, onProgress);
   const { canvas: prepared, zoom } = preprocess(canvas);
 

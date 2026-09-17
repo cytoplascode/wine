@@ -365,3 +365,49 @@ Known limits, all visible in the overlays: two-colour labels; a headline
 or drawing running to the paper's edge on the column being scanned; an
 edge with no contrast at all (bounded at 0.4× the text width and the
 margin used instead).
+
+## Snap, a safer Auto, and a word-gap rule — 2026-09-17
+
+**Snap** (`js/refine.js`): from six handles placed roughly, each edge is
+sampled, the paper on one side and the not-paper on the other are modelled
+from the user's own placement, the transition is found along a
+perpendicular at every sample, and a line (sides) or half-ellipse
+(top/bottom) is fitted through the transitions with outlier rejection.
+Three passes with a shrinking radius; nothing moves more than the radius;
+no contrast, no move. On a synthetic label with handles perturbed by 3%,
+every handle returns to within 1.5 px. Auto now ends with a Snap.
+
+Two things Snap exposed and that are fixed with it:
+
+- The wrap fitter clamped a concave top bow to zero and summed. A camera
+  held above the label sees the top edge bow inward and the bottom edge
+  bow further outward; the *signed* sum is what the geometry wants, and
+  is the same at any camera height. With the clamp gone and the assumed
+  camera-distance ratio recalibrated on the eight photos (7 → 4.5, a
+  phone filling the frame with a label), the fitted curves land at
+  120–150° where five of eight used to hit the 180° cap.
+- With the label exactly cropped the recogniser glued widely spaced words
+  ("JOSEPHMELLOT", "SAUVIGNONBLANC"). The space class rises to ~0.3 at
+  every such gap while the blank wins; the CTC decoder now emits a space
+  when a blank run between two letters carries ≥ 0.2 of space
+  probability. Inside words that probability is ~0.01.
+
+```
+smoke set, auto-crop + snap + read:   80%     (raw photo 78%; auto alone 78%)
+WineSensed 65 labelled, raw photo:    62%     (63% before the word-gap rule)
+```
+
+Auto also got a safer seed and bounds: the text group with the most
+printing wins over the single biggest word (a neck label's one name no
+longer beats the front label's seven lines), a big headline cannot reach
+across a gap to another label's small print, and the top and bottom scans
+are bounded by half the label's width.
+
+WineSensed overlay tally, first 16 photos: 9 placed on the paper, 4 tight
+but readable (a top or side missed and replaced by a margin), 2 on the
+wrong part of the bottle before the seed fix (Colomé's neck label; the
+Brunello strip under Villa Poggio Salvi), 1 with nothing to find (a black
+label on a black bottle — the scans run to the bottle's silhouette and the
+frame). The last is the failure to expect on dark bottles: no contrast,
+and no rule of this kind can invent one. That is the case for a
+segmentation model, which needs weights this sandbox cannot fetch.

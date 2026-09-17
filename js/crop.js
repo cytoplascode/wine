@@ -13,6 +13,9 @@ import {
   MAX_SIDE, DEFAULT_WRAP, MIN_WRAP, MAX_WRAP,
 } from './warp.js';
 import { flattenLabel } from './flatten.js';
+import { toGray, toChroma } from './detect.js';
+import { refineHandles } from './refine.js';
+import { detInputSize } from './ppocr-post.js';
 
 const HANDLE_RADIUS = 13;   // CSS px — drawn size
 const GRAB_RADIUS = 30;     // CSS px — touch target, comfortably past a fingertip
@@ -63,6 +66,7 @@ export function initCrop() {
   canvas.addEventListener('pointercancel', onPointerUp);
   $('#btn-crop-reset').addEventListener('click', resetPoints);
   $('#btn-crop-auto').addEventListener('click', () => { autoDetect({ announce: true }); });
+  $('#btn-crop-snap').addEventListener('click', snapHandles);
 
   const slider = $('#wrap-slider');
   slider.value = String(Math.round((DEFAULT_WRAP * 180) / Math.PI));
@@ -77,6 +81,8 @@ export function initCrop() {
 export function showImage(nextBitmap, saved) {
   bitmap = nextBitmap;
   if (!bitmap) return;
+  planes = null;
+  setHint('');
   points = saved || defaultPoints();
   buildPreviewSource();
   layout();
@@ -92,6 +98,53 @@ export function getPoints() { return points; }
 
 let detecting = null;
 let onAutoUnavailable = null;
+let planes = null;          // luminance + chroma of the photo at working scale, for Snap
+
+function setHint(text) {
+  const hint = $('#crop-hint');
+  hint.textContent = text;
+  hint.hidden = !text;
+}
+
+/** The photo as Snap reads it: luminance and chroma at ≤960 px, made once. */
+function workingPlanes() {
+  if (planes) return planes;
+  const size = detInputSize(bitmap.width, bitmap.height);
+  const canvas = document.createElement('canvas');
+  canvas.width = size.width; canvas.height = size.height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(bitmap, 0, 0, size.width, size.height);
+  const image = ctx.getImageData(0, 0, size.width, size.height);
+  planes = {
+    gray: toGray(image.data, size.width, size.height),
+    chroma: toChroma(image.data, size.width, size.height),
+    width: size.width,
+    height: size.height,
+    scale: { x: bitmap.width / size.width, y: bitmap.height / size.height },
+  };
+  return planes;
+}
+
+/**
+ * Snap: move each edge onto the paper's boundary near where the handles
+ * are. Local, fast, and needs no engine. Handles never move further than
+ * a few percent of the label's width; edges without contrast stay put.
+ */
+export function snapHandles() {
+  if (!bitmap || !points) return null;
+  const p = workingPlanes();
+  const local = points.map((q) => ({ x: q.x / p.scale.x, y: q.y / p.scale.y }));
+  const { points: refined, moved } = refineHandles(p, p.width, p.height, local);
+  points = refined.map((q) => ({ x: q.x * p.scale.x, y: q.y * p.scale.y }));
+  autoFitWrap();
+  draw();
+  drawPreview();
+  const edges = Object.entries(moved).filter(([, v]) => v).map(([k]) => k);
+  setHint(edges.length === 4 ? 'Snapped to the paper on all four edges.'
+    : edges.length ? `Snapped ${edges.join(', ')}; no clear edge on the rest.`
+      : 'No clear paper edge near the handles — drag them closer and try again.');
+  return moved;
+}
 
 /** Let the app say what to do when detection cannot run (engine not downloaded). */
 export function setAutoUnavailableHandler(fn) { onAutoUnavailable = fn; }
@@ -119,11 +172,14 @@ export async function autoDetect({ announce = false } = {}) {
       const result = await findLabel(target);
       // The user may have moved on to another photo while this ran.
       if (bitmap !== target) return false;
-      if (!result) return false;
+      if (!result) { setHint('No text found to start from — drag the handles, then Snap.'); return false; }
       points = result.points;
       autoFitWrap();
       draw();
       drawPreview();
+      const found = Object.entries(result.found).filter(([, v]) => v).map(([k]) => k);
+      setHint(found.length === 4 ? 'Label edges found and snapped — check, then read.'
+        : `Edges found: ${found.join(', ') || 'none'}; the rest are guessed. Drag them close, then Snap.`);
       return true;
     } catch {
       return false;

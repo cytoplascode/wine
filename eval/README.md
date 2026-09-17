@@ -20,8 +20,9 @@ to keep that cost visible. `node eval/serve.mjs 8765` runs the server alone
 (binds 0.0.0.0, handy for opening `probe.html` from a phone on the same wifi).
 
 `--options '{"autoCrop":true}'` on the ppocr extractor places the six
-handles with the app's label finder (`js/autocrop.js`), unwraps with the
-app's own flatten and reads that — the crop-free path a phone gets.
+handles with the app's label finder (`js/autocrop.js`, detector then Snap),
+unwraps with the app's own flatten and reads that — the crop-free path a
+phone gets.
 `node eval/crop-preview.mjs [--data …] [--only a.jpg]` draws what the
 finder did on each photo (text boxes, handles, the flattened result) into
 `eval/out/crops/`, which is how a placement rule is judged before its

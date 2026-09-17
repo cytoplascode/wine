@@ -250,6 +250,7 @@ export async function recognize(source, onProgress, options = {}) {
     const [, T, C] = tensor.dims;
     const { text, confidence } = ctcDecode(tensor.data, T, C, EN_CHARSET);
     if (!text) continue;
+    const logits = options.debugLogits ? { data: Array.from(tensor.data), T, C } : undefined;
 
     const ys = quad.map((p) => p.y); const xs = quad.map((p) => p.x);
     const back = recScale * zoom;
@@ -261,6 +262,7 @@ export async function recognize(source, onProgress, options = {}) {
       left: Math.min(...xs) / back,
       right: Math.max(...xs) / back,
       score: box.score,
+      logits,
     });
   }
   const recMs = performance.now() - t1;

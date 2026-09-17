@@ -109,3 +109,18 @@ test('ctcDecode collapses repeats and drops blanks', () => {
   assert.equal(text, 'NIMBI');
   assert.ok(Math.abs(confidence - 90) < 1e-3); // 0.9 is not exact in float32
 });
+
+test('ctcDecode reads a blank run with some space probability as a word gap', () => {
+  const C = EN_CHARSET.length;
+  const idx = (ch) => EN_CHARSET.indexOf(ch);
+  const SPACE = C - 1;
+  // "AB" then three blank steps where the space class reaches 0.3, then "C".
+  const steps = [idx('A'), idx('B'), 0, 0, 0, idx('C')];
+  const logits = new Float32Array(steps.length * C);
+  steps.forEach((k, t) => { logits[t * C + k] = 0.9; });
+  logits[3 * C + SPACE] = 0.3;
+  assert.equal(ctcDecode(logits, steps.length, C).text, 'AB C');
+  // Inside a word the blank run carries no space probability: no gap.
+  logits[3 * C + SPACE] = 0.05;
+  assert.equal(ctcDecode(logits, steps.length, C).text, 'ABC');
+});

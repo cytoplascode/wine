@@ -202,12 +202,23 @@ export function orderBoxes(boxes, rowTolerance = 0.5) {
 
 /* ── CTC ────────────────────────────────────────────────────────────── */
 
-/** Greedy CTC decode of a [T, C] softmax (flat Float32Array). */
-export function ctcDecode(logits, T, C, charset = EN_CHARSET) {
+/**
+ * Greedy CTC decode of a [T, C] softmax (flat Float32Array).
+ *
+ * Word gaps in widely spaced type ("J O S E P H   M E L L O T") are where
+ * the recogniser is least sure: the blank wins every step of the gap, but
+ * the space class rises to a third of the probability there and stays near
+ * zero inside a word. So a blank run between two characters whose peak
+ * space probability reaches `spaceThreshold` is read as a space — the
+ * greedy path would have glued the words.
+ */
+export function ctcDecode(logits, T, C, charset = EN_CHARSET, spaceThreshold = 0.2) {
+  const spaceClasses = charset.map((ch, i) => (ch === ' ' ? i : -1)).filter((i) => i >= 0);
   let text = '';
   let last = -1;
   let confSum = 0;
   let n = 0;
+  let gapSpace = 0;   // peak space probability over the blank run since the last character
   for (let t = 0; t < T; t += 1) {
     let best = 0; let bestP = -1;
     const off = t * C;
@@ -215,7 +226,17 @@ export function ctcDecode(logits, T, C, charset = EN_CHARSET) {
       const p = logits[off + c];
       if (p > bestP) { bestP = p; best = c; }
     }
-    if (best !== 0 && best !== last) { text += charset[best] ?? ''; confSum += bestP; n += 1; }
+    if (best === 0) {
+      for (const sc of spaceClasses) gapSpace = Math.max(gapSpace, logits[off + sc]);
+    } else if (best !== last) {
+      const ch = charset[best] ?? '';
+      if (gapSpace >= spaceThreshold && text && !text.endsWith(' ') && ch !== ' ') text += ' ';
+      text += ch;
+      confSum += bestP;
+      n += 1;
+      gapSpace = 0;
+    }
+    if (best !== 0) gapSpace = 0;
     last = best;
   }
   return { text: text.trim(), confidence: n ? (confSum / n) * 100 : 0 };

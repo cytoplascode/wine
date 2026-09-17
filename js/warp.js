@@ -263,14 +263,15 @@ export function cylinderSize(points, maxSide = MAX_SIDE, wrap = DEFAULT_WRAP) {
 
 /* ── Auto-fit the wrap angle ────────────────────────────────────────── */
 
-/** Typical camera distance divided by typical bottle radius. A wine label
- *  photograph is taken at arm's length (25–35 cm) against a standard 750 ml
- *  bottle (~3.75 cm radius), so d = D/R lands somewhere in [5, 10]. Seven is
- *  where the synthetic cylinder fixture used elsewhere in tests sits (D=260,
- *  R=37), and calibrating the fit to that value recovers the synthetic's true
- *  wrap exactly. Real photos vary; the slider is what the user reaches for on
- *  the ones where this misses. */
-export const ASSUMED_CAMERA_DISTANCE_RATIO = 7;
+/** Typical camera distance divided by typical bottle radius. Calibrated on
+ *  the eight real phone photos in eval/data with their edges snapped to the
+ *  paper: a phone filling the frame with a label sits about 17 cm from a
+ *  750 ml bottle (~3.75 cm radius), d ≈ 4.5, which puts those photos at
+ *  120–150° where 7 (the synthetic fixture's distance, D=260, R=37) drove
+ *  five of them to the 180° cap. The fixture's own test passes its own d.
+ *  Real photos vary; the slider is what the user reaches for on the ones
+ *  where this misses. */
+export const ASSUMED_CAMERA_DISTANCE_RATIO = 4.5;
 
 /**
  * Pick the wrap angle implied by the middle handles.
@@ -307,11 +308,16 @@ export function fitWrapAngle(points, d = ASSUMED_CAMERA_DISTANCE_RATIO) {
   if (chord < 1e-6) return DEFAULT_WRAP;
 
   // Total bulge = how far each middle handle sits off the chord between its
-  // corners, summed. Signed so a handle sitting on the *far* side of the
-  // chord (concave — which is nonsensical for a bottle) reads as zero rather
-  // than pulling the fit the wrong way.
-  const topBulge = Math.max(0, perpendicularDistance(b, a, c));
-  const bottomBulge = Math.max(0, perpendicularDistance(e, f, dCorner));
+  // corners, summed *with sign*. The bow of an edge is the projection of a
+  // horizontal circle seen from above or below: at eye level it is a straight
+  // line, and it bows more the further the edge is from eye level. A camera
+  // held above the label sees the top edge bow inward (concave) and the
+  // bottom edge bow further outward; the signed sum is the same whichever
+  // height the camera is at, because the two elevations always differ by
+  // the label's height. Clamping the concave one to zero, as this used to,
+  // overstated the wrap for every photo taken from above.
+  const topBulge = outwardDistance(b, a, c, -1);
+  const bottomBulge = outwardDistance(e, f, dCorner, 1);
   const totalBulge = topBulge + bottomBulge;
 
   // Label height, same both-sides averaging as chord.
@@ -326,18 +332,19 @@ export function fitWrapAngle(points, d = ASSUMED_CAMERA_DISTANCE_RATIO) {
   return Math.max(MIN_WRAP, Math.min(MAX_WRAP, 2 * Math.acos(cos)));
 }
 
-/** Signed perpendicular distance from `p` to the line through `a` and `b`,
- *  positive on the side the middle handle typically bows toward (away from
- *  the label's interior). Returns 0 on a degenerate chord. */
-function perpendicularDistance(p, a, b) {
+/** Perpendicular distance from `p` to the chord `a`→`b` (left to right),
+ *  positive when `p` lies on the label's outside: above the chord for the
+ *  top edge (`side` −1, smaller y), below it for the bottom edge (`side`
+ *  +1). Returns 0 on a degenerate chord. */
+function outwardDistance(p, a, b, side) {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const len = Math.hypot(dx, dy);
   if (len < 1e-9) return 0;
-  // The middle handle for the TOP edge is above the chord (smaller y), and for
-  // the BOTTOM edge is below it (larger y). Either way its perpendicular
-  // distance is |(...)|/len; sign is discarded by the Math.max above.
-  return Math.abs((p.x - a.x) * dy - (p.y - a.y) * dx) / len;
+  const cross = ((p.x - a.x) * dy - (p.y - a.y) * dx) / len;
+  // With the chord running left→right, a point above it (smaller y) gives a
+  // positive cross product.
+  return side < 0 ? cross : -cross;
 }
 
 /* ── Shared resampler ───────────────────────────────────────────────── */

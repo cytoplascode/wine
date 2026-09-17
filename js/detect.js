@@ -46,27 +46,41 @@ const union = (rects) => ({
 export function clusterBoxes(boxes, reach = 3) {
   if (!boxes.length) return [];
   const area = (b) => (b.right - b.left) * (b.bottom - b.top);
+  const groups = [];
   const rest = [...boxes].sort((a, b) => area(b) - area(a));
-  const cluster = [rest.shift()];
-  let changed = true;
-  while (changed) {
-    changed = false;
-    const bounds = union(cluster);
-    // Reach is measured in the cluster's typical line height, so a line of
-    // small print below a big gap still joins, and a tiny stray box does
-    // not get to reach further than the text around it.
-    const typical = median(cluster.map((b) => b.bottom - b.top));
-    for (let i = rest.length - 1; i >= 0; i -= 1) {
-      const box = rest[i];
-      const h = Math.max(1, box.bottom - box.top, typical);
-      if (overlaps(grow(box, reach * h), bounds)) {
-        cluster.push(box);
-        rest.splice(i, 1);
-        changed = true;
+  while (rest.length) {
+    const cluster = [rest.shift()];
+    let changed = true;
+    while (changed) {
+      changed = false;
+      const bounds = union(cluster);
+      // Reach is the smaller of the candidate's height and the cluster's
+      // typical line height: a big headline must not reach three of its own
+      // heights across a gap to small print on another label. Text that
+      // belongs together but sits further apart is picked up later by the
+      // paper-continuity pass.
+      const typical = median(cluster.map((b) => b.bottom - b.top));
+      for (let i = rest.length - 1; i >= 0; i -= 1) {
+        const box = rest[i];
+        const h = Math.max(1, Math.min(box.bottom - box.top, typical));
+        if (overlaps(grow(box, reach * h), bounds)) {
+          cluster.push(box);
+          rest.splice(i, 1);
+          changed = true;
+        }
       }
     }
+    groups.push(cluster);
   }
-  return cluster;
+  // The main label is the group with the most printing, not the one with
+  // the single biggest word: a neck label's one big name loses to the
+  // front label's seven lines. Area weighted by the square root of the
+  // count, so one headline still beats a scatter of tiny boxes elsewhere.
+  const weight = (g) => g.reduce((sum, b) => sum + area(b), 0) * Math.sqrt(g.length);
+  groups.sort((a, b) => weight(b) - weight(a));
+  const best = groups[0];
+  best.sort((a, b) => area(b) - area(a));   // the seed stays the biggest box
+  return best;
 }
 
 /* ── Scans ──────────────────────────────────────────────────────────── */
@@ -427,6 +441,11 @@ export function detectLabel({ gray, chroma = null, width, height, boxes }) {
   const top = edge(-1);
   const bottom = edge(1);
 
+  // A corner scan that ran far past the text ran away: bound it to a
+  // plausible distance and admit the edge was not seen.
+  const farthestY = Math.min(coreH * 0.6 + margin, labelW * 0.5);
+  if (core.top - top.yCorner > farthestY) { top.yCorner = core.top - margin; top.found = false; top.apex = null; }
+  if (bottom.yCorner - core.bottom > farthestY) { bottom.yCorner = core.bottom + margin; bottom.found = false; bottom.apex = null; }
   const yTop = top.yCorner;
   const yBottom = bottom.yCorner;
   const labelH = Math.max(1, yBottom - yTop);

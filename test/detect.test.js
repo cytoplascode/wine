@@ -31,6 +31,15 @@ test('clusterBoxes keeps the main block and drops far-away text', () => {
   assert.ok(cluster.every((b) => b.top >= 200));
 });
 
+test('clusterBoxes prefers the group with the most printing over one big word', () => {
+  const neck = [box(120, 20, 280, 70)];                       // one big name, area 8000
+  const front = [box(100, 300, 300, 320), box(120, 340, 280, 360), box(110, 380, 290, 400),
+    box(130, 420, 270, 435), box(140, 450, 260, 465)];       // five lines, area ~14700
+  const cluster = clusterBoxes([...neck, ...front]);
+  assert.equal(cluster.length, 5);
+  assert.ok(cluster.every((b) => b.top >= 300));
+});
+
 test('scanEdge finds where the paper ends and reports the frame edge when it never does', () => {
   const { gray, width, height } = syntheticLabel({});
   const leftEdge = scanEdge({ gray }, width, height, { axis: 'x', from: 140, direction: -1, bandStart: 150, bandEnd: 350, limit: 120 });

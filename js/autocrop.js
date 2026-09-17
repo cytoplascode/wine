@@ -4,6 +4,7 @@
 
 import { detectText } from './ppocr.js';
 import { detectLabelUpright } from './detect.js';
+import { refineHandles } from './refine.js';
 
 /**
  * Find the label in `source` (a canvas or ImageBitmap). Resolves to
@@ -11,7 +12,7 @@ import { detectLabelUpright } from './detect.js';
  * null when no text was found to start from. Throws if the engine cannot
  * be loaded — the caller decides whether that is worth mentioning.
  */
-export async function findLabel(source, onProgress) {
+export async function findLabel(source, onProgress, { snap = true } = {}) {
   const t0 = performance.now();
   const { boxes, gray } = await detectText(source, onProgress);
   const working = boxes.map((b) => ({
@@ -24,9 +25,19 @@ export async function findLabel(source, onProgress) {
     gray: gray.data, chroma: gray.chroma, width: gray.width, height: gray.height, boxes: working,
   });
   if (!result) return null;
+  // Snap settles the detector's placement onto the paper's boundary: the
+  // detector is right to within a few percent, Snap to within a pixel.
+  let { points } = result;
+  let snapped = null;
+  if (snap) {
+    const refined = refineHandles({ gray: gray.data, chroma: gray.chroma }, gray.width, gray.height, points);
+    points = refined.points;
+    snapped = refined.moved;
+  }
   return {
-    points: result.points.map((p) => ({ x: p.x * gray.scale.x, y: p.y * gray.scale.y })),
+    points: points.map((p) => ({ x: p.x * gray.scale.x, y: p.y * gray.scale.y })),
     found: result.found,
+    snapped,
     tilt: result.tilt || 0,
     boxes,
     ms: Math.round(performance.now() - t0),

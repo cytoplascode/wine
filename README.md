@@ -286,13 +286,27 @@ handles are then exactly what a manual crop gives, so drag any of them if
 the paper's edge was misjudged, tap **Auto** to run it again, or **Reset**
 for the plain starting handles.
 
-What it needs: the PP-OCR engine downloaded (Settings), since the detector
-is part of it. Where it is known to fall short: a label in two colours is
+**Snap** is the precise step, and it works from your own rough placement
+as well as from Auto's. Drag the six handles roughly onto the label, tap
+**Snap**, and each edge settles onto the paper's actual boundary: the app
+samples what lies just inside and just outside every edge, finds where one
+turns into the other along it, and fits a straight line to the sides and
+the same half-ellipse the unwrap uses to the top and bottom. Handles never
+move more than a few percent of the label's width, so a wrong Snap costs
+nothing; an edge with no contrast, say white paper against a white wall,
+is left where you put it and the hint line says which edges it took. Snap
+needs no engine download and runs in a fraction of a second.
+
+What Auto needs: the PP-OCR engine downloaded (Settings), since the
+detector is part of it. Where it is known to fall short: a label in two colours is
 cropped to the colour block the text sits on; a big illustration or
 headline that runs to the edge stops the top or bottom scan short; a label
 whose edge is invisible against the background (cream paper, cream wall)
 falls back to a margin round the text. Those are the cases to adjust by
-hand. Re-opening a crop from the review screen keeps the handles you set.
+hand. Re-opening a crop from the review screen keeps the handles you set. The
+curve is fitted from the handles after every change, and since Snap puts
+the arcs exactly on the paper, the fit is calibrated to the distance a
+phone sits from a bottle when the label fills the frame.
 
 ### The curve slider
 

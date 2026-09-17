@@ -83,6 +83,30 @@ Consequence: until probe v2 says otherwise, the phone is a **WASM-only**
 target. That makes CPU-cheap recognisers (PP-OCR) relatively more attractive
 than a 230M-param VLM, whatever the accuracy numbers say.
 
+### Probe v2 — same phone, 2026-09-17
+
+```
+gpuAdapter: null   gpuAdapterHighPerf: null   gpuAdapterLowPower: null   gpuAdapterFallback: null
+webgpu: true       wgslFeatures: 12          → the API object exists, but Chrome hands out
+                                               no adapter under any preference, not even
+                                               the software fallback. WebGPU is blocklisted
+                                               or disabled for this device in Chrome 153.
+crossOriginIsolated: false  sharedArrayBuffer: false
+                                             → served from GitHub Pages without COOP/COEP:
+                                               no threads unless the app ships the
+                                               coi-serviceworker shim.
+hardwareConcurrency: 8      wasmSimd: true   → with the shim, ORT-web gets 8 SIMD threads.
+```
+
+Probe v2 settles it: the phone is **WASM-only**, and that is a property of
+the browser on this device, not of the probe. A 230M-parameter VLM
+(Florence-2) on single-thread WASM is tens of seconds to minutes per photo;
+it is out as a phone candidate regardless of how it scores on a laptop.
+PP-OCR on WASM is about 1 s per photo with threads (2.3 s without), which
+the shim makes reachable on Pages. The in-browser decision is therefore
+PP-OCRv4 + the parser, with the remaining accuracy work in the parser rules
+and dictionaries.
+
 ## PP-OCRv4 (DB det + CRNN rec) via ONNX Runtime Web, WASM — 2026-09-17
 
 Models: `ch_PP-OCRv4_det_infer` (4.5 MB) + `en_PP-OCRv4_rec` (7.3 MB), from

@@ -10,7 +10,7 @@
  * once downloaded, since a vendored build never changes under its own name.
  */
 
-const SHELL_CACHE = 'shell-v7';
+const SHELL_CACHE = 'shell-v8';
 
 /* The OCR cache is deliberately *not* versioned with the shell. Those files are
  * vendored and immutable — a new build of Tesseract would arrive under a new
@@ -38,7 +38,6 @@ const SHELL_ASSETS = [
   './js/ppocr.js',
   './js/ppocr-post.js',
   './js/detect.js',
-  './js/autocrop.js',
   './js/flatten.js',
   './js/refine.js',
   './js/schema.js',

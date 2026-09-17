@@ -65,7 +65,6 @@ export function initCrop() {
   canvas.addEventListener('pointerup', onPointerUp);
   canvas.addEventListener('pointercancel', onPointerUp);
   $('#btn-crop-reset').addEventListener('click', resetPoints);
-  $('#btn-crop-auto').addEventListener('click', () => { autoDetect({ announce: true }); });
   $('#btn-crop-snap').addEventListener('click', snapHandles);
 
   const slider = $('#wrap-slider');
@@ -96,8 +95,6 @@ export function showImage(nextBitmap, saved) {
 
 export function getPoints() { return points; }
 
-let detecting = null;
-let onAutoUnavailable = null;
 let planes = null;          // luminance + chroma of the photo at working scale, for Snap
 
 function setHint(text) {
@@ -144,51 +141,6 @@ export function snapHandles() {
     : edges.length ? `Snapped ${edges.join(', ')}; no clear edge on the rest.`
       : 'No clear paper edge near the handles — drag them closer and try again.');
   return moved;
-}
-
-/** Let the app say what to do when detection cannot run (engine not downloaded). */
-export function setAutoUnavailableHandler(fn) { onAutoUnavailable = fn; }
-
-/**
- * Place the handles on the label the detector finds. The photo stays where
- * it is; only the handles move, and the user can drag any of them afterwards.
- * Resolves to true when handles were placed. Never throws: a photo the
- * detector cannot read just keeps its current handles.
- */
-export async function autoDetect({ announce = false } = {}) {
-  if (!bitmap) return false;
-  if (detecting) return detecting;
-  const target = bitmap;
-  const stage = $('#crop-detecting');
-  stage.hidden = false;
-  detecting = (async () => {
-    try {
-      const { isEngineCached } = await import('./ppocr.js');
-      if (!(await isEngineCached())) {
-        if (announce && onAutoUnavailable) onAutoUnavailable();
-        return false;
-      }
-      const { findLabel } = await import('./autocrop.js');
-      const result = await findLabel(target);
-      // The user may have moved on to another photo while this ran.
-      if (bitmap !== target) return false;
-      if (!result) { setHint('No text found to start from — drag the handles, then Snap.'); return false; }
-      points = result.points;
-      autoFitWrap();
-      draw();
-      drawPreview();
-      const found = Object.entries(result.found).filter(([, v]) => v).map(([k]) => k);
-      setHint(found.length === 4 ? 'Label edges found and snapped — check, then read.'
-        : `Edges found: ${found.join(', ') || 'none'}; the rest are guessed. Drag them close, then Snap.`);
-      return true;
-    } catch {
-      return false;
-    } finally {
-      stage.hidden = true;
-      detecting = null;
-    }
-  })();
-  return detecting;
 }
 
 function renderWrap() {

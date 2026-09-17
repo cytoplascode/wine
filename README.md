@@ -273,40 +273,25 @@ finger shouldn't lose a bottle mid-edit).
 Drafts live in IndexedDB, alongside the vault handle. Photos and all — several megabytes each,
 which is why localStorage wouldn't fit them. Nothing about them ever leaves the phone.
 
-### Automatic label detection
+### Snap
 
-On a fresh photo the crop screen places the six handles itself, then hands
-them to you. It runs the text detector over the whole photo, gathers the
-text that sits on one piece of paper, walks outward from that text on each
-side until the paper gives way to glass or background, and reads the arc of
-the top and bottom edges at three columns to set the curve. A leaning
-bottle is straightened first from the angle of the text lines. Detection
-takes about a second and shows "Finding the label…" while it works; the
-handles are then exactly what a manual crop gives, so drag any of them if
-the paper's edge was misjudged, tap **Auto** to run it again, or **Reset**
-for the plain starting handles.
+Drag the six handles roughly onto the label, then tap **Snap**: each edge
+settles onto the paper's actual boundary. The app samples what lies just
+inside and just outside every edge, finds where one turns into the other
+along it, and fits a straight line to the sides and the same half-ellipse
+the unwrap uses to the top and bottom. Handles never move more than a few
+percent of the label's width, so a wrong Snap costs nothing to undo by
+hand; an edge with no contrast, say white paper against a white wall, is
+left where you put it, and the hint line under the photo says which edges
+it took. Snap needs no download and runs in a fraction of a second. The
+curve is fitted from the handles after every change, calibrated to the
+distance a phone sits from a bottle when the label fills the frame.
 
-**Snap** is the precise step, and it works from your own rough placement
-as well as from Auto's. Drag the six handles roughly onto the label, tap
-**Snap**, and each edge settles onto the paper's actual boundary: the app
-samples what lies just inside and just outside every edge, finds where one
-turns into the other along it, and fits a straight line to the sides and
-the same half-ellipse the unwrap uses to the top and bottom. Handles never
-move more than a few percent of the label's width, so a wrong Snap costs
-nothing; an edge with no contrast, say white paper against a white wall,
-is left where you put it and the hint line says which edges it took. Snap
-needs no engine download and runs in a fraction of a second.
-
-What Auto needs: the PP-OCR engine downloaded (Settings), since the
-detector is part of it. Where it is known to fall short: a label in two colours is
-cropped to the colour block the text sits on; a big illustration or
-headline that runs to the edge stops the top or bottom scan short; a label
-whose edge is invisible against the background (cream paper, cream wall)
-falls back to a margin round the text. Those are the cases to adjust by
-hand. Re-opening a crop from the review screen keeps the handles you set. The
-curve is fitted from the handles after every change, and since Snap puts
-the arcs exactly on the paper, the fit is calibrated to the distance a
-phone sits from a bottle when the label fills the frame.
+A fully automatic placement was tried and withdrawn: it lived on the
+text detector plus scans for the paper's edge, and landed far off too
+often on real bottles. The code stays in the eval harness
+(`js/detect.js`, `js/autocrop.js`, `--options '{"autoCrop":true}'`) as the
+baseline a segmentation model would have to beat; see `eval/results.md`.
 
 ### The curve slider
 

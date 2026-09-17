@@ -74,15 +74,10 @@ onEnter('crop', (arg) => {
   // land the flattened output.
   const isBack = arg === 'back' || arg === 'back-edit';
   state.cropTarget = isBack ? 'back' : 'front';
-  const saved = isBack ? state.backCropPoints : state.cropPoints;
-  crop.showImage(isBack ? state.backLabelBitmap : state.labelBitmap, saved);
-  // A fresh photo gets the handles placed for it; a re-opened crop keeps
-  // the handles the user already set.
-  if (!saved) crop.autoDetect();
-});
-
-crop.setAutoUnavailableHandler(() => {
-  toast('Automatic detection needs the recognition engine — download it in Settings.');
+  crop.showImage(
+    isBack ? state.backLabelBitmap : state.labelBitmap,
+    isBack ? state.backCropPoints : state.cropPoints,
+  );
 });
 
 /* ── Flattening ─────────────────────────────────────────────────────── */

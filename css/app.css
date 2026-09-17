@@ -386,6 +386,22 @@ body[data-screen="review"] .scroll {
 
 .stage-dark { background: #000; }
 
+/* "Finding the label…" while the detector places the handles. Sits over the
+ * photo without hiding it, so the handles are seen to move into place. */
+.detecting {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 14px;
+  pointer-events: none;
+}
+.detecting[hidden] { display: none; }
+
 #video {
   width: 100%;
   height: 100%;

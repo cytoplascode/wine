@@ -12,6 +12,7 @@ import {
   cylinderSize, warpCylinder, edgeArc, fitWrapAngle,
   MAX_SIDE, DEFAULT_WRAP, MIN_WRAP, MAX_WRAP,
 } from './warp.js';
+import { flattenLabel } from './flatten.js';
 
 const HANDLE_RADIUS = 13;   // CSS px — drawn size
 const GRAB_RADIUS = 30;     // CSS px — touch target, comfortably past a fingertip
@@ -61,6 +62,7 @@ export function initCrop() {
   canvas.addEventListener('pointerup', onPointerUp);
   canvas.addEventListener('pointercancel', onPointerUp);
   $('#btn-crop-reset').addEventListener('click', resetPoints);
+  $('#btn-crop-auto').addEventListener('click', () => { autoDetect({ announce: true }); });
 
   const slider = $('#wrap-slider');
   slider.value = String(Math.round((DEFAULT_WRAP * 180) / Math.PI));
@@ -87,6 +89,51 @@ export function showImage(nextBitmap, saved) {
 }
 
 export function getPoints() { return points; }
+
+let detecting = null;
+let onAutoUnavailable = null;
+
+/** Let the app say what to do when detection cannot run (engine not downloaded). */
+export function setAutoUnavailableHandler(fn) { onAutoUnavailable = fn; }
+
+/**
+ * Place the handles on the label the detector finds. The photo stays where
+ * it is; only the handles move, and the user can drag any of them afterwards.
+ * Resolves to true when handles were placed. Never throws: a photo the
+ * detector cannot read just keeps its current handles.
+ */
+export async function autoDetect({ announce = false } = {}) {
+  if (!bitmap) return false;
+  if (detecting) return detecting;
+  const target = bitmap;
+  const stage = $('#crop-detecting');
+  stage.hidden = false;
+  detecting = (async () => {
+    try {
+      const { isEngineCached } = await import('./ppocr.js');
+      if (!(await isEngineCached())) {
+        if (announce && onAutoUnavailable) onAutoUnavailable();
+        return false;
+      }
+      const { findLabel } = await import('./autocrop.js');
+      const result = await findLabel(target);
+      // The user may have moved on to another photo while this ran.
+      if (bitmap !== target) return false;
+      if (!result) return false;
+      points = result.points;
+      autoFitWrap();
+      draw();
+      drawPreview();
+      return true;
+    } catch {
+      return false;
+    } finally {
+      stage.hidden = true;
+      detecting = null;
+    }
+  })();
+  return detecting;
+}
 
 function renderWrap() {
   $('#wrap-label').textContent = `Curve ${Math.round((wrap * 180) / Math.PI)}°`;
@@ -451,50 +498,8 @@ const clamp = (v, lo, hi) => (v < lo ? lo : (v > hi ? hi : v));
  * Returns `{ canvas, blob }`.
  */
 export async function flatten() {
-  const shape = points;
-  const size = cylinderSize(shape, MAX_SIDE, wrap);
-
-  // Read back only the bounding box, and only at the resolution the output can
-  // use. Height is the honest yardstick: unrolling stretches width on purpose.
-  const rawHeight = Math.max(
-    Math.hypot(points[TL].x - points[BL].x, points[TL].y - points[BL].y),
-    Math.hypot(points[TR].x - points[BR].x, points[TR].y - points[BR].y),
-  );
-  const scale = Math.min(1, size.height / Math.max(1, rawHeight));
-
-  const box = boundingBox(shape);
-  const srcCanvas = document.createElement('canvas');
-  srcCanvas.width = Math.max(1, Math.round(box.width * scale));
-  srcCanvas.height = Math.max(1, Math.round(box.height * scale));
-  const srcCtx = srcCanvas.getContext('2d', { willReadFrequently: true });
-  srcCtx.drawImage(
-    bitmap,
-    box.x, box.y, box.width, box.height,
-    0, 0, srcCanvas.width, srcCanvas.height,
-  );
-  const source = srcCtx.getImageData(0, 0, srcCanvas.width, srcCanvas.height);
-
-  const local = shape.map((p) => ({ x: (p.x - box.x) * scale, y: (p.y - box.y) * scale }));
-  const warped = warpCylinder(source, local, size.width, size.height, wrap);
-
-  const canvas = document.createElement('canvas');
-  canvas.width = warped.width;
-  canvas.height = warped.height;
-  canvas.getContext('2d').putImageData(
-    new ImageData(warped.data, warped.width, warped.height), 0, 0,
-  );
-
+  const canvas = flattenLabel(bitmap, points, wrap);
   return { canvas, blob: await canvasToBlob(canvas) };
-}
-
-function boundingBox(shape) {
-  const xs = shape.map((p) => p.x);
-  const ys = shape.map((p) => p.y);
-  const x = clamp(Math.floor(Math.min(...xs)), 0, bitmap.width);
-  const y = clamp(Math.floor(Math.min(...ys)), 0, bitmap.height);
-  const right = clamp(Math.ceil(Math.max(...xs)), 0, bitmap.width);
-  const bottom = clamp(Math.ceil(Math.max(...ys)), 0, bitmap.height);
-  return { x, y, width: Math.max(1, right - x), height: Math.max(1, bottom - y) };
 }
 
 window.addEventListener('resize', () => {

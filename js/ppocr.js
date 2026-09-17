@@ -17,6 +17,7 @@ import { warpQuad } from './warp.js';
 import {
   EN_CHARSET, detInputSize, recInputWidth, boxesFromMap, orderBoxes, ctcDecode,
 } from './ppocr-post.js';
+import { toGray, toChroma } from './detect.js';
 
 const DEFAULT_VENDOR = new URL('../vendor/ppocr/', import.meta.url).href;
 
@@ -102,6 +103,19 @@ function getEngine(onProgress) {
   return loaded;
 }
 
+/** Are all the files on the phone already? The crop screen asks before
+ *  running the detector on its own, so a 16 MB download never starts
+ *  without the user having pressed the button for it. */
+export async function isEngineCached() {
+  if (typeof caches === 'undefined') return false;
+  try {
+    const hits = await Promise.all(Object.values(FILES).map((f) => caches.match(`${settings.vendor}${f}`)));
+    return hits.every(Boolean);
+  } catch {
+    return false;
+  }
+}
+
 /** RGBA ImageData → BGR CHW float32 with the given per-channel mean/std. */
 function toTensorBGR(ort, image, mean, std) {
   const { width, height, data } = image;
@@ -136,6 +150,44 @@ function resample(imageData, width, height) {
 
 /** Let the progress overlay paint between two long synchronous runs. */
 const breathe = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+/**
+ * Just the detector: where the text is, without reading it. Returns the
+ * boxes in the source's pixels (`corners`, plus `left/top/right/bottom`),
+ * and the grayscale working image the detector saw with its scale, which
+ * the label finder scans for the paper's edge.
+ */
+export async function detectText(source, onProgress, options = {}) {
+  const { thresh = 0.3, boxThresh = 0.6, unclip = 1.5 } = options;
+  const { ort, det } = await getEngine(onProgress);
+  const size = detInputSize(source.width, source.height, DET_LIMIT);
+  const detImage = drawTo(source, size.width, size.height);
+
+  const t0 = performance.now();
+  const detOut = await det.run({ x: toTensorBGR(ort, detImage, DET_MEAN, DET_STD) });
+  const prob = detOut[det.outputNames[0]].data;
+  const ms = performance.now() - t0;
+
+  const mapBoxes = orderBoxes(boxesFromMap(prob, size.width, size.height, { thresh, boxThresh, unclip }));
+  const sx = source.width / size.width;
+  const sy = source.height / size.height;
+  const boxes = mapBoxes.map((box) => {
+    const corners = box.corners.map((c) => ({ x: c.x * sx, y: c.y * sy }));
+    const xs = corners.map((c) => c.x); const ys = corners.map((c) => c.y);
+    return {
+      corners, score: box.score, w: box.w * sx, h: box.h * sy,
+      left: Math.min(...xs), top: Math.min(...ys), right: Math.max(...xs), bottom: Math.max(...ys),
+    };
+  });
+  return {
+    boxes, ms,
+    gray: {
+      data: toGray(detImage.data, size.width, size.height),
+      chroma: toChroma(detImage.data, size.width, size.height),
+      width: size.width, height: size.height, scale: { x: sx, y: sy },
+    },
+  };
+}
 
 /**
  * Read a label from a canvas or ImageBitmap.

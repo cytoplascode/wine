@@ -309,3 +309,59 @@ Where the remaining misses are, from the 65:
   wine name of a bottle that prints no other — the fallback names the
   appellation, which is right for Mukuzani and Fleurie and arguable for
   Champagne.
+
+## Automatic label detection + unwrap, smoke set — 2026-09-17
+
+`--options '{"autoCrop":true}'`: the label finder places the six handles,
+the app's flatten unwraps, PP-OCR reads the result. No human input.
+
+```
+rows: 8   scored fields: 40   overall:  78%      (raw photo, no crop: 78%)
+field         n   acc   sim
+winery         7   71%   71%
+wine           8   63%   63%                     (75%)
+vintage        6   83%   83%                     (100%)
+region         3  100%  100%                     (67%)
+country        6  100%  100%                     (83%)
+appellation    2  100%  100%                     (50%)
+grapes         8   63%   63%
+median 1552 ms/image  (detector pass + unwrap + read)
+```
+
+Same total, different photos. The unwrap made Mellot's ornate "COTEAUX DU
+GIENNOIS" legible — the line the recogniser had mangled on the raw photo —
+so that bottle went from 29% to 100%. Tezi went the other way: a
+two-colour label (purple above, orange below) is cropped to the orange
+block its largest text sits on, and the winery and vintage printed in the
+purple block are lost. Papari's back-story text is cropped tightly, which
+let a prose fragment win the wine name. The overlays in `eval/out/crops/`
+(from `eval/crop-preview.mjs`) show the placements: six of eight are on
+the paper's edge with the curve right; Tezi is the colour-block case;
+Aladasturi, whose label is one big drawing over one line of text, gets the
+text strip.
+
+What the finder does, in order, and why each step exists:
+
+- text boxes from the detector, clustered round the largest one;
+- the sides, walking out from the text along the largest box's rows until
+  the paper ends — no thin-line forgiveness here, because the bottle's own
+  silhouette is a thin line with a bright wall possibly behind it;
+- a paper model (brightness and chroma) from the margin strips beside
+  that text; chroma is what tells a highlight on green glass from white
+  paper, and glass between two labels from a purple label;
+- text further up or down the bottle joins only if the paper continues to
+  it along the label's margin columns — which keeps a back label out;
+- top and bottom corners on the margin columns, judged against each
+  column's own paper (brightness varies across a curved label), with a
+  slowly following baseline so shading is not an edge but a step is, and
+  a look-ahead so a printed rule is not an edge either;
+- the arc's apex from outside in at the middle column, asked to persist
+  for a while and to carry on down to the corners' height before it is
+  believed;
+- the whole thing done on a picture straightened by the median angle of
+  the text lines, and the handles leaned back afterwards.
+
+Known limits, all visible in the overlays: two-colour labels; a headline
+or drawing running to the paper's edge on the column being scanned; an
+edge with no contrast at all (bounded at 0.4× the text width and the
+margin used instead).

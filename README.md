@@ -273,6 +273,27 @@ finger shouldn't lose a bottle mid-edit).
 Drafts live in IndexedDB, alongside the vault handle. Photos and all — several megabytes each,
 which is why localStorage wouldn't fit them. Nothing about them ever leaves the phone.
 
+### Automatic label detection
+
+On a fresh photo the crop screen places the six handles itself, then hands
+them to you. It runs the text detector over the whole photo, gathers the
+text that sits on one piece of paper, walks outward from that text on each
+side until the paper gives way to glass or background, and reads the arc of
+the top and bottom edges at three columns to set the curve. A leaning
+bottle is straightened first from the angle of the text lines. Detection
+takes about a second and shows "Finding the label…" while it works; the
+handles are then exactly what a manual crop gives, so drag any of them if
+the paper's edge was misjudged, tap **Auto** to run it again, or **Reset**
+for the plain starting handles.
+
+What it needs: the PP-OCR engine downloaded (Settings), since the detector
+is part of it. Where it is known to fall short: a label in two colours is
+cropped to the colour block the text sits on; a big illustration or
+headline that runs to the edge stops the top or bottom scan short; a label
+whose edge is invisible against the background (cream paper, cream wall)
+falls back to a margin round the text. Those are the cases to adjust by
+hand. Re-opening a crop from the review screen keeps the handles you set.
+
 ### The curve slider
 
 A label is wrapped round a bottle, so correcting perspective is not enough — the surface

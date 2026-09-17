@@ -9,6 +9,9 @@
 
 import { parseLabel } from '../../js/parse.js';
 import { configure, recognize } from '../../js/ppocr.js';
+import { findLabel } from '../../js/autocrop.js';
+import { flattenLabel } from '../../js/flatten.js';
+import { fitWrapAngle } from '../../js/warp.js';
 
 let configured = false;
 
@@ -24,14 +27,26 @@ export async function extract(blob, options = {}) {
 
   const bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image' });
   try {
-    const { text, lines, timing, threads } = await recognize(bitmap, null, opts);
+    // `{"autoCrop":true}`: place the six handles with the label finder, unwrap
+    // with the app's own flatten, and read that — the shipped crop-free path.
+    let source = bitmap;
+    let crop = null;
+    if (opts.autoCrop) {
+      const found = await findLabel(bitmap);
+      if (found) {
+        const wrap = fitWrapAngle(found.points);
+        source = flattenLabel(bitmap, found.points, wrap);
+        crop = { points: found.points, found: found.found, wrap, ms: found.ms, boxes: found.boxes.length };
+      }
+    }
+    const { text, lines, timing, threads } = await recognize(source, null, opts);
     const { fields } = parseLabel({ text, lines });
     const box = lines.length ? {
       left: Math.min(...lines.map((l) => l.left)), top: Math.min(...lines.map((l) => l.top)),
       right: Math.max(...lines.map((l) => l.right)), bottom: Math.max(...lines.map((l) => l.top + l.height)),
     } : null;
     return {
-      fields, rawText: text, lineCount: lines.length, box, lines, timing,
+      fields, rawText: text, lineCount: lines.length, box, lines, timing, crop,
       threads, crossOriginIsolated: self.crossOriginIsolated,
     };
   } finally {

@@ -56,6 +56,30 @@ const FUZZY_NOISE = [
 ];
 
 /**
+ * Long boilerplate words that a small photo mangles *and* runs together:
+ * "INDICAZIONE GEOGRAFICA TIPICA" arrives as "DICAZIONEGEOGANIATIN", one
+ * word with no spaces for the phrase matcher to work with. Each of these is
+ * looked for as an approximate substring of the line with its spaces
+ * removed; two edits on a nine-letter word is far from any real name.
+ */
+const BOILERPLATE_WORDS = [
+  'indicazione', 'geografica', 'denominazione', 'controllata', 'garantita',
+  'appellation', 'controlee', 'protegee', 'imbottigliato', 'embotellado',
+  'produced', 'bottled', 'sulfites', 'sulphites', 'contains', 'biologico',
+];
+
+function fuzzyContainsWord(squashed, word, tolerance = 2) {
+  if (squashed.length + tolerance < word.length) return false;
+  for (let start = 0; start < squashed.length; start += 1) {
+    for (let len = word.length - tolerance; len <= word.length + tolerance; len += 1) {
+      if (start + len > squashed.length) break;
+      if (levenshtein(squashed.slice(start, start + len), word) <= tolerance) return true;
+    }
+  }
+  return false;
+}
+
+/**
  * A word one edit away from a short varietal name, but a real producer or
  * place name rather than a garbled grape — "Joseph Mellot" is not a misread
  * "Merlot". Fuzzy matching exists for OCR corruption on long, distinctive
@@ -69,10 +93,52 @@ export function isNoise(text) {
   if (NOISE_PATTERNS.some((re) => re.test(text))) return true;
 
   const words = normalize(text).split(' ').filter(Boolean);
-  return FUZZY_NOISE.some((phrase) => {
+  if (FUZZY_NOISE.some((phrase) => {
     const needle = normalize(phrase);
     return findPhrase(words, needle, Math.max(1, Math.floor(needle.length * 0.25))) >= 0;
-  });
+  })) return true;
+
+  const squashed = words.join('');
+  return squashed.length >= 8 && BOILERPLATE_WORDS.some((w) => fuzzyContainsWord(squashed, w));
+}
+
+/** The longest dictionary appellation this normalized line contains. */
+function appellationIn(normalized) {
+  for (const entry of SORTED_APPELLATIONS) {
+    const needle = normalize(entry[0]);
+    if (contains(normalized, needle)) return { entry, needle };
+  }
+  return null;
+}
+
+/**
+ * A long place name read as one word with a few letters wrong:
+ * "BRUNELLOMONTALCIN" is Brunello di Montalcino with the spaces lost and
+ * two letters dropped. Only lines that are a single long word are tried,
+ * against names of ten letters or more, within 15% of their length — an
+ * unknown producer's name is never that close to a dictionary entry.
+ */
+const SQUASHED_APPELLATIONS = SORTED_APPELLATIONS
+  .map((entry) => [entry, normalize(entry[0]).replace(/ /g, '')])
+  .filter(([, squashed]) => squashed.length >= 10);
+
+function fuzzyAppellation(normalized) {
+  if (normalized.includes(' ') || normalized.length < 10) return null;
+  for (const [entry, squashed] of SQUASHED_APPELLATIONS) {
+    const tolerance = Math.floor(squashed.length * 0.15);
+    if (Math.abs(squashed.length - normalized.length) > tolerance) continue;
+    if (levenshtein(normalized, squashed) <= tolerance) return entry;
+  }
+  return null;
+}
+
+/** "MOULIS-EN-MÉDOC", "Chianti Classico": a place, with at most one other
+ *  word around it. Such a line names where the wine is from, never who made
+ *  it, and is handed to the wine-name fallback under its dictionary spelling. */
+function isAppellationOnly(normalized) {
+  const found = appellationIn(normalized);
+  if (found) return leftoverWords(normalized, [found.needle]) <= 1;
+  return !!fuzzyAppellation(normalized);
 }
 
 const isYearOnly = (text) => /^\s*(19|20)\d{2}\s*$/.test(text);
@@ -115,11 +181,15 @@ function isJunkFragment(line) {
  *  and must not be fused with the line above it. */
 function isFieldLike(text) {
   if (isYearOnly(text) || isNoise(text) || isDescriptorLine(text)) return true;
-  if (isMarketingLine(text) || isProse(text)) return true;
+  if (isMarketingLine(text) || isProse(text) || CUVEE_PREFIX.test(text.trim())) return true;
   const normalized = normalize(text);
   const hit = (list) => list.some(([name]) => contains(normalized, normalize(name)));
-  return hit(SORTED_VARIETALS) || hit(SORTED_COUNTRIES) || hit(SORTED_APPELLATIONS);
+  return hit(SORTED_VARIETALS) || hit(SORTED_COUNTRIES) || hit(SORTED_APPELLATIONS)
+    || !!fuzzyAppellation(normalized);
 }
+
+/** Lines that open with a word meaning "this is the cuvée's name". */
+const CUVEE_PREFIX = /^(cuv[ée]e|selecci[oó]n|selezione|reserva|riserva|gran reserva|bin\s+\d+|n[o°º]\s*\d+)\b/i;
 
 /**
  * Read a label.
@@ -148,7 +218,13 @@ export function parseLabel({ text = '', lines = [] } = {}, now = new Date()) {
     claimed.add(vintage.lineIndex);
   }
 
-  const varieties = findVarieties(fullText);
+  // Words of a place named on the label are never a misread grape: the
+  // "Tarantino" IGT is not "Sagrantino" two letters off.
+  const placeWords = new Set(SORTED_APPELLATIONS
+    .map(([name]) => normalize(name))
+    .filter((needle) => contains(fullText, needle))
+    .flatMap((needle) => needle.split(' ')));
+  const varieties = findVarieties(fullText, placeWords);
   let varietyLine = null;
   if (varieties.length) {
     fields.Varieties = varieties.map((v) => v.name).join(', ');
@@ -166,7 +242,7 @@ export function parseLabel({ text = '', lines = [] } = {}, now = new Date()) {
     const i = appellation.lineIndex;
     if (!APPELLATION_MARKER.test(merged[i].text)
         && leftoverWords(normalizedLines[i], [normalize(appellation.name)]) <= 1) {
-      appellationLine = { ...merged[i], index: i };
+      appellationLine = { ...merged[i], index: i, name: appellation.name };
     }
   }
 
@@ -223,8 +299,9 @@ export function joinRowFragments(lines) {
   // Junk pieces are emitted as rows of their own rather than glued onto a
   // neighbour: a vintage or a volume still needs to exist as a line, but
   // "SHAVERDE 88 HS" and "11% Aladasturi Rosé" are not names.
-  const junk = lines.filter(isJunkFragment).map((line) => ({ ...line }));
-  const remaining = lines.filter((line) => !isJunkFragment(line)).map((line) => ({ ...line }));
+  const apart = (line) => isJunkFragment(line) || isNoise(line.text);
+  const junk = lines.filter(apart).map((line) => ({ ...line }));
+  const remaining = lines.filter((line) => !apart(line)).map((line) => ({ ...line }));
   const rows = [...junk];
 
   while (remaining.length) {
@@ -363,13 +440,14 @@ function findVintage(lines, normalizedLines, now) {
 
 /* ── Varieties ──────────────────────────────────────────────────────── */
 
-function findVarieties(fullText) {
+function findVarieties(fullText, excludeWords = new Set()) {
   const words = fullText.split(' ');
   const found = [];
+  const exclude = new Set([...VARIETAL_LOOKALIKES, ...excludeWords]);
 
   for (const [name] of SORTED_VARIETALS) {
     const needle = normalize(name);
-    const at = findPhrase(words, needle, undefined, VARIETAL_LOOKALIKES);
+    const at = findPhrase(words, needle, undefined, exclude);
     if (at < 0) continue;
     // Skip a grape already covered by a longer one: "Cabernet Sauvignon"
     // must not also yield "Sauvignon Blanc"'s "Sauvignon".
@@ -455,17 +533,33 @@ function findAppellation(lines, normalizedLines) {
     .map((line, i) => (APPELLATION_MARKER.test(line.text) ? i : -1))
     .filter((i) => i >= 0);
 
+  // "Appellation Moulis Contrôlée" under a "MOULIS-EN-MÉDOC" headline: the
+  // dictionary entry that contains the declared word is the one to record,
+  // and the headline is the line to attribute it to.
+  const fuller = (declaredWord) => {
+    const entry = SORTED_APPELLATIONS.find(([name]) => {
+      const needle = normalize(name);
+      return needle !== declaredWord && contains(needle, declaredWord)
+        && normalizedLines.some((line) => contains(line, needle));
+    });
+    if (!entry) return null;
+    const at = normalizedLines.findIndex((line) => contains(line, normalize(entry[0])));
+    return { name: entry[0], country: entry[1], region: entry[2], lineIndex: at };
+  };
+
   // A place name on the line that says "Appellation … Contrôlée" outranks the
   // same kind of word appearing anywhere else on the label — a cuvée called
   // "Saint-Julien" must not outvote the Margaux the bottle actually claims.
   const declared = search(marked);
-  if (declared) return declared;
+  if (declared) return fuller(normalize(declared.name)) || declared;
 
   for (const i of marked) {
     const raw = lines[i].text;
 
     const french = raw.match(/appellation\s+(.+?)\s+(?:contr[oôóò]l[ée]{1,2}e?|prot[ée]g[ée]e)\b/i);
-    if (french) return { name: tidy(french[1]), country: '', region: '', lineIndex: i };
+    if (french) {
+      return fuller(normalize(french[1])) || { name: tidy(french[1]), country: '', region: '', lineIndex: i };
+    }
 
     const abbreviated = raw.match(/^(.*?)\s*\b(?:DOCG|DOCa|DOC|DOP?|AOC|AOP|IGP|IGT|AVA)\b/i);
     if (abbreviated && abbreviated[1].trim().length > 2) {
@@ -473,7 +567,13 @@ function findAppellation(lines, normalizedLines) {
     }
   }
 
-  return search(lines.map((_, i) => i));
+  const exact = search(lines.map((_, i) => i));
+  if (exact) return exact;
+  for (let i = 0; i < lines.length; i += 1) {
+    const entry = fuzzyAppellation(normalizedLines[i]);
+    if (entry) return { name: entry[0], country: entry[1], region: entry[2], lineIndex: i };
+  }
+  return null;
 }
 
 function findCountry(fullText) {
@@ -508,12 +608,41 @@ function findType(fullText) {
 
 /* ── Producer and cuvée ─────────────────────────────────────────────── */
 
+const SUFFIX_WORDS = new Set(PRODUCER_SUFFIXES.flatMap((s) => normalize(s).split(' ')));
+const TAIL_GLUE = new Set(['and', 'e', 'y', 'et', 'de', 'di', 'del', 'della', 'the']);
+
+/** "Vineyard and Cellars", "ESTATE WINERY AND VINEYARDS": nothing but the
+ *  words a producer's name ends with — the second line of a name that
+ *  wrapped, never a name on its own. */
+function isProducerTail(normalized) {
+  const words = normalized.split(' ').filter(Boolean);
+  return words.length > 0
+    && words.some((w) => SUFFIX_WORDS.has(w))
+    && words.every((w) => SUFFIX_WORDS.has(w) || TAIL_GLUE.has(w));
+}
+
 function findWinemaker(lines, normalizedLines, claimed) {
   // A naming word is worth more than size: "Château X" is unambiguous.
   for (let i = 0; i < lines.length; i++) {
     if (claimed.has(i)) continue;
     const normalized = normalizedLines[i];
     const words = normalized.split(' ');
+
+    // A tail joins the name above it; on its own it names nobody.
+    if (isProducerTail(normalized)) {
+      const above = i - 1;
+      if (above >= 0 && !claimed.has(above) && looksLikeName(lines[above].text, lines[above].confidence)
+          && !isAppellationOnly(normalizedLines[above])) {
+        claimed.add(i);
+        return { name: `${tidy(lines[above].text)} ${tidy(lines[i].text)}`, lineIndex: above };
+      }
+      continue;
+    }
+
+    // "Lindeman's", "Penfolds'": a possessive on a lone word is a family name.
+    if (words.length === 1 && /[a-z]'s?$/.test(normalized) && normalized.length >= 5) {
+      return { name: tidy(lines[i].text), lineIndex: i };
+    }
     if (words.length < 2) continue;
 
     const prefixed = PRODUCER_PREFIXES.some((p) => normalized.startsWith(`${normalize(p)} `));
@@ -521,14 +650,16 @@ function findWinemaker(lines, normalizedLines, claimed) {
     if (prefixed || suffixed) return { name: tidy(lines[i].text), lineIndex: i };
   }
 
-  const tallest = tallestUnclaimed(lines, claimed);
+  const tallest = tallestUnclaimed(lines, claimed, (index) => (
+    !isAppellationOnly(normalizedLines[index]) && !isProducerTail(normalizedLines[index])
+  ));
   return tallest ? { name: tidy(tallest.text), lineIndex: tallest.index } : null;
 }
 
 function findWineName(lines, normalizedLines, claimed, { varietyLine, appellationLine } = {}) {
   for (let i = 0; i < lines.length; i++) {
     if (claimed.has(i)) continue;
-    if (/^(cuv[ée]e|selecci[oó]n|selezione|reserva|riserva|gran reserva)\b/i.test(lines[i].text.trim())) {
+    if (CUVEE_PREFIX.test(lines[i].text.trim())) {
       return { name: tidy(lines[i].text), lineIndex: i };
     }
   }
@@ -539,12 +670,13 @@ function findWineName(lines, normalizedLines, claimed, { varietyLine, appellatio
   // It is certain to be a real word about this wine, which an unknown line
   // of similar size is not, so it wins unless the unknown line is clearly
   // the bigger one.
+  // The appellation is given under its dictionary spelling: the recognised
+  // line may carry a stray fragment beside it ("OELATION BORDEAUX SUPERIEUR").
   const backed = varietyLine || appellationLine;
-  if (tallest && backed && backed.height >= tallest.height * 0.8) {
-    return { name: tidy(backed.text), lineIndex: backed.index };
-  }
+  const named = (line) => ({ name: line.name || tidy(line.text), lineIndex: line.index });
+  if (tallest && backed && backed.height >= tallest.height * 0.8) return named(backed);
   if (tallest) return { name: tidy(tallest.text), lineIndex: tallest.index };
-  return backed ? { name: tidy(backed.text), lineIndex: backed.index } : null;
+  return backed ? named(backed) : null;
 }
 
 /**
@@ -576,10 +708,10 @@ export function looksLikeName(text, confidence = 100) {
   return words.some((word) => word.length >= 3);
 }
 
-function tallestUnclaimed(lines, claimed) {
+function tallestUnclaimed(lines, claimed, accept = () => true) {
   let best = null;
   lines.forEach((line, index) => {
-    if (claimed.has(index)) return;
+    if (claimed.has(index) || !accept(index)) return;
     if (!looksLikeName(line.text, line.confidence)) return;
     if (!best || line.height > best.height) best = { ...line, index };
   });

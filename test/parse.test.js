@@ -375,7 +375,7 @@ test('junk fragments on a row are not glued onto the name', () => {
 test('an appellation-only line can be the wine name', () => {
   const fields = parse([['SHAVERDE', 100], ['MUKUZANI', 40], ['Dry Red Georgian Wine', 30], ['2024', 25]]);
   assert.equal(fields.Winemaker, 'SHAVERDE');
-  assert.equal(fields.WineName, 'MUKUZANI');
+  assert.equal(fields.WineName, 'Mukuzani');
   assert.equal(fields.Appelation, 'Mukuzani');
   assert.equal(fields.Region, 'Kakheti');
   assert.equal(fields.Country, 'Georgia');
@@ -387,4 +387,55 @@ test('Georgian dictionaries: grapes, PDOs and amber wine', () => {
   assert.equal(fields.Type, 'Amber');
   assert.equal(fields.Region, 'Kakheti');
   assert.equal(fields.Country, 'Georgia');
+});
+
+/* ── Rules from the WineSensed slice ────────────────────────────────── */
+
+test('a producer name wrapped onto a "Vineyard and Cellars" line is rejoined', () => {
+  const fields = parse([['BLUE MOUNTAIN', 63], ['Vineyard and Cellars', 45], ['Chardonnay 2015', 49]]);
+  assert.equal(fields.Winemaker, 'BLUE MOUNTAIN Vineyard and Cellars');
+  assert.equal(fields.Varieties, 'Chardonnay');
+});
+
+test('a possessive lone word is the producer and "Bin 25" is a cuvée', () => {
+  const fields = parse([['Bin 25', 77], ["LINDEMAN'S", 62], ['BRUT CUVEE', 54]]);
+  assert.equal(fields.Winemaker, "LINDEMAN'S");
+  assert.equal(fields.WineName, 'Bin 25');
+});
+
+test('a long place name read without spaces is still the appellation, never the producer', () => {
+  const fields = parse([['BRUNELLOMONTALCIN', 62], ['Villa', 55], ['POGGIO', 43], ['2013', 23]]);
+  assert.equal(fields.Appelation, 'Brunello di Montalcino');
+  assert.equal(fields.Region, 'Toscana');
+  assert.notEqual(fields.Winemaker, 'BRUNELLOMONTALCIN');
+});
+
+test('an appellation-only headline is not offered as the producer', () => {
+  const fields = parse([['MOULIS-EN-MEDOC', 41], ['APPELLATION MOULIS CONTROLEE', 39], ['CRU BOURGEOIS', 25], ['1990', 26]]);
+  assert.equal(fields.Appelation, 'Moulis-en-Médoc');
+  assert.equal(fields.Region, 'Bordeaux');
+  assert.equal(fields.Winemaker, undefined);
+  assert.equal(fields.WineName, 'Moulis-en-Médoc');
+});
+
+test('words of a place on the label are never a misread grape', () => {
+  const fields = parse([['CONTESSA MARINA', 74], ['PRIMITIVO-MERLOT', 59], ['TARANTINO', 27], ['ITALIA', 19]]);
+  assert.equal(fields.Varieties, 'Primitivo, Merlot');
+  assert.equal(fields.Appelation, 'Tarantino');
+  assert.equal(fields.Region, 'Puglia');
+});
+
+test('boilerplate mangled into one word is still noise', () => {
+  assert.ok(isNoise('DICAZIONEGEOGANIATIN'));
+  assert.ok(isNoise('PROLOGICO/ORGANIC'));
+  assert.ok(isNoise('IWSC TROPHY'));
+  assert.ok(isNoise('GRAND CRU CLASSE DE GRAVES'));
+  assert.ok(!isNoise('Guidalberto'));
+  assert.ok(!isNoise('Casillero del Diablo'));
+});
+
+test('Baja California is Mexico, not California', () => {
+  const fields = parse([['FAUNO', 60], ['BAJA CALIFORNIA', 20], ['2016', 18]]);
+  assert.equal(fields.Country, 'Mexico');
+  assert.equal(fields.Winemaker, 'FAUNO');
 });

@@ -40,6 +40,12 @@ const REC_STD = [0.5, 0.5, 0.5];
 const DET_LIMIT = 960;
 const REC_LIMIT = 1600;
 
+/** A photo whose long side is below this is enlarged before detection: a
+ *  gallery picture or a thumbnail puts label text under the ~12 px the
+ *  detector wants. The flattened label from the app's own camera is far
+ *  larger and is left alone. */
+const MIN_LONG_SIDE = 1000;
+
 let settings = { vendor: DEFAULT_VENDOR, threads: null };
 let loaded = null;
 
@@ -138,9 +144,21 @@ const breathe = () => new Promise((resolve) => setTimeout(resolve, 0));
  * print — the same shape the Tesseract path produces.
  */
 export async function recognize(source, onProgress, options = {}) {
-  const { thresh = 0.3, boxThresh = 0.6, unclip = 1.5 } = options;
+  const { thresh = 0.3, boxThresh = 0.6, unclip = 1.5, upscale = 1 } = options;
   const { ort, det, rec } = await getEngine(onProgress);
   const report = (progress, status) => onProgress && onProgress({ status, progress });
+
+  // Work on an enlarged copy when the photo is small; every box is mapped
+  // back through `zoom` so the lines come out in the caller's pixels.
+  const longSide = Math.max(source.width, source.height);
+  const zoom = upscale > 1 && longSide < MIN_LONG_SIDE ? Math.min(upscale, MIN_LONG_SIDE / longSide) : 1;
+  if (zoom !== 1) {
+    const big = document.createElement('canvas');
+    big.width = Math.round(source.width * zoom);
+    big.height = Math.round(source.height * zoom);
+    big.getContext('2d').drawImage(source, 0, 0, big.width, big.height);
+    source = big;
+  }
 
   const full = { width: source.width, height: source.height };
   const size = detInputSize(full.width, full.height, DET_LIMIT);
@@ -182,13 +200,14 @@ export async function recognize(source, onProgress, options = {}) {
     if (!text) continue;
 
     const ys = quad.map((p) => p.y); const xs = quad.map((p) => p.x);
+    const back = recScale * zoom;
     lines.push({
       text,
       confidence,
-      top: Math.min(...ys) / recScale,
-      height: (Math.max(...ys) - Math.min(...ys)) / recScale,
-      left: Math.min(...xs) / recScale,
-      right: Math.max(...xs) / recScale,
+      top: Math.min(...ys) / back,
+      height: (Math.max(...ys) - Math.min(...ys)) / back,
+      left: Math.min(...xs) / back,
+      right: Math.max(...xs) / back,
       score: box.score,
     });
   }

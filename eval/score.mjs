@@ -127,6 +127,7 @@ export function score(rows, { threshold = DEFAULT_THRESHOLD, worstN = 10 } = {})
 
   return {
     rows: rows.length,
+    labelled: rowScores.filter((r) => r.n > 0).length,
     overall: totalN ? totalHits / totalN : null,
     scoredFields: totalN,
     perField,
@@ -134,12 +135,29 @@ export function score(rows, { threshold = DEFAULT_THRESHOLD, worstN = 10 } = {})
   };
 }
 
+/** Truth can come from more than one place — the dataset's own metadata,
+ *  or a person reading what the label prints — and the two disagree on
+ *  spelling often enough that each deserves its own table. Rows carry
+ *  `truth.source`; this groups them, skipping rows without truth, and
+ *  returns nothing when only one source is present. */
+export function bySource(rows) {
+  const groups = new Map();
+  for (const row of rows) {
+    if (!row.truth || !Object.keys(FIELD_MAP).some((k) => row.truth[k])) continue;
+    const key = row.truth.source || 'unspecified';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(row);
+  }
+  return groups.size > 1 ? [...groups] : [];
+}
+
 const pct = (x) => (x === null ? '   —' : `${Math.round(x * 100)}%`.padStart(4));
 
 export function formatTable(summary, label = '') {
   const lines = [];
   if (label) lines.push(label);
-  lines.push(`rows: ${summary.rows}   scored fields: ${summary.scoredFields}   overall: ${pct(summary.overall)}`);
+  const rows = summary.labelled === summary.rows ? `rows: ${summary.rows}` : `rows: ${summary.rows} (${summary.labelled} labelled)`;
+  lines.push(`${rows}   scored fields: ${summary.scoredFields}   overall: ${pct(summary.overall)}`);
   lines.push('field         n   acc   sim');
   for (const [key, f] of Object.entries(summary.perField)) {
     if (!f.n) continue;

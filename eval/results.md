@@ -241,3 +241,71 @@ reload; the download card fetches the five files; recognition runs on 4
 threads at 685 ms warm (2.1 s cold, including the model load); a second
 launch touches the network for nothing. The Tesseract engine remains
 selectable and still reads.
+
+## WineSensed slice — 800 photos at 480×640, 65 hand-labelled — 2026-09-17
+
+The user's zip: 800 WineSensed photos, whole-bottle shots at 480×640 with
+label text 8–20 px tall, no metadata. 65 were labelled by hand from what
+the label prints (`"source":"printed"`); the rest ran unlabelled so their
+lines are recorded for when the dataset's own table arrives
+(`eval/import-winesensed.mjs`). Median 397 ms/photo, 4 threads.
+
+```
+                       before this round   after
+rows: 65 labelled      overall: 55%        63%
+winery         60       35%                40%
+wine           56       48%                52%
+vintage        43       84%                84%
+region         37       41%                59%
+country        42       64%                74%
+appellation    37       46%                68%
+grapes         29       83%                83%
+smoke set (8)          78%                 78%
+```
+
+Rules added, all general:
+
+- Dictionary: 40 more appellations and areas as labels print them (New
+  World AVAs with their state or province as region, wide Italian IGTs,
+  Sherry, Tokaji, Valle de Uco …), Mexico and "Baja California" as a
+  country line — which used to read as California, USA.
+- Boilerplate that a small photo mangles *and* runs together
+  ("DICAZIONEGEOGANIATIN", "PROLOGICO/ORGANIC") is caught by looking for
+  long boilerplate words as approximate substrings of the space-stripped
+  line. Awards ("IWSC TROPHY"), classifications ("CRU BOURGEOIS", "GRAND
+  CRU CLASSÉ DE GRAVES") and leftover strength/volume fragments are noise.
+- A long place name read as one word with a few letters wrong
+  ("BRUNELLOMONTALCIN") is matched to the dictionary within 15% of its
+  length; a line that is essentially an appellation is never the producer,
+  and when it becomes the wine name it is written in dictionary spelling.
+- "Appellation Moulis Contrôlée" under a "MOULIS-EN-MÉDOC" headline records
+  the fuller entry and its region.
+- Words of a place on the label are withheld from fuzzy grape matching
+  (the Tarantino IGT is not "Sagrantino").
+- A producer name wrapped onto a "Vineyard and Cellars" line is rejoined;
+  a possessive lone word ("LINDEMAN'S") is the producer; "Bin 25" and
+  "N° 3" open a cuvée name; descriptor words grew (solera, reserva, pale,
+  late harvest, cuvée …) so "SOLERA RESERVA" and "BRUT CUVEE" stop being
+  names.
+
+Upscaling ×2 before detection was measured and **not kept**: 53% against
+55%, slower, with vintage and wine both down. The detector already sees
+these photos at their native size and the recogniser gains nothing from
+interpolated pixels.
+
+Where the remaining misses are, from the 65:
+
+- **Recogniser, ~half of the winery misses**: script and ornate faces at
+  this resolution ("Colomé" → "stomi", "Georges Kriter" → "GueryeKeitr",
+  "Jean-Claude" → "ean-cTaude", "Julien Sunier" → "Juliew Suer"), and
+  producers not detected at all when the label is dark or blurred. These
+  photos are far smaller than the app's flattened labels; they bound the
+  parser's ceiling here, not the phone's.
+- **Attribution that needs knowledge, not rules**: the producer printed
+  small under a big cuvée (Farnese under EDIZIONE, Tselepos under CANAVA
+  CHRISSOU, Catena Zapata under ADRIANNA VINEYARD). A producer list would
+  settle these; a size rule cannot.
+- **Truth ambiguity**: whether "Champagne", "Napa Valley" or "Brut" is the
+  wine name of a bottle that prints no other — the fallback names the
+  appellation, which is right for Mukuzani and Fleurie and arguable for
+  Champagne.

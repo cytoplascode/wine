@@ -246,6 +246,32 @@ export const APPELLATIONS = [
   ['Tokaj', 'Hungary', 'Tokaj'], ['Eger', 'Hungary', 'Eger'],
   ['Villány', 'Hungary', 'Villány'], ['Santorini', 'Greece', 'Santorini'],
   ['Nemea', 'Greece', 'Peloponnese'], ['Naoussa', 'Greece', 'Macedonia'],
+  // Further New World areas, as labels print them.
+  ['Sonoma County', 'USA', 'California'], ['Sonoma', 'USA', 'California'],
+  ['Central Coast', 'USA', 'California'], ['Edna Valley', 'USA', 'California'],
+  ['Santa Barbara County', 'USA', 'California'], ['Mendocino', 'USA', 'California'],
+  ['Wahluke Slope', 'USA', 'Washington'], ['Walla Walla Valley', 'USA', 'Washington'],
+  ['Texas High Plains', 'USA', 'Texas'], ['Texas Hill Country', 'USA', 'Texas'],
+  ['Finger Lakes', 'USA', 'New York'], ['Missouri', 'USA', 'Missouri'],
+  ['Okanagan Valley', 'Canada', 'British Columbia'],
+  ['Four Mile Creek', 'Canada', 'Ontario'], ['Niagara Peninsula', 'Canada', 'Ontario'],
+  ['Niagara-on-the-Lake', 'Canada', 'Ontario'],
+  ['Barossa', 'Australia', 'South Australia'],
+  ['South Eastern Australia', 'Australia', 'South Eastern Australia'],
+  ['Robertson', 'South Africa', 'Western Cape'], ['Franschhoek', 'South Africa', 'Western Cape'],
+  ['Valle de Uco', 'Argentina', 'Mendoza'], ['Valle Calchaquí', 'Argentina', 'Salta'],
+  ['Valle de Aconcagua', 'Chile', 'Aconcagua'], ['Valle del Maipo', 'Chile', 'Valle del Maipo'],
+  ['Valle de Casablanca', 'Chile', 'Valle de Casablanca'],
+  ['Valle de Guadalupe', 'Mexico', 'Baja California'], ['Baja California', 'Mexico', 'Baja California'],
+  // Wide Italian IGTs and Spanish/Hungarian names that appear on their own.
+  ['Vigneti delle Dolomiti', 'Italy', 'Trentino-Alto Adige'],
+  ['Terre Siciliane', 'Italy', 'Sicilia'], ['Delle Venezie', 'Italy', 'Veneto'],
+  ['Tarantino', 'Italy', 'Puglia'], ['Salento', 'Italy', 'Puglia'],
+  ['Treviso', 'Italy', 'Veneto'],
+  ['Saint-Émilion Grand Cru', 'France', 'Bordeaux'], ['Moulis', 'France', 'Bordeaux'],
+  ['Sherry', 'Spain', 'Andalucía'], ['Tokaji', 'Hungary', 'Tokaj'],
+  ['Toscana', 'Italy', 'Toscana'], ['Puglia', 'Italy', 'Puglia'],
+  ['Sicilia', 'Italy', 'Sicilia'], ['Veneto', 'Italy', 'Veneto'],
 ];
 
 /** Countries as printed on labels, with the English name to record. */
@@ -257,6 +283,7 @@ export const COUNTRIES = [
   ['New Zealand', 'New Zealand'], ['South Africa', 'South Africa'],
   ['Argentina', 'Argentina'], ['Chile', 'Chile'], ['United States', 'USA'],
   ['USA', 'USA'], ['California', 'USA'], ['Greece', 'Greece'],
+  ['Baja California', 'Mexico'], ['Mexico', 'Mexico'], ['México', 'Mexico'],
   ['Hungary', 'Hungary'], ['Romania', 'Romania'], ['Georgia', 'Georgia'],
   ['Switzerland', 'Switzerland'], ['Suisse', 'Switzerland'], ['Lebanon', 'Lebanon'],
   ['Israel', 'Israel'], ['Uruguay', 'Uruguay'], ['Brazil', 'Brazil'],
@@ -313,6 +340,16 @@ export const NOISE_PATTERNS = [
   /\bwine\s+of\s+origin\b/i,
   /^\d{6,}$/,
   /^[\d\s.,%-]+$/,
+  // Fragments of the volume and strength line a small photo leaves behind.
+  /\b750\s*m\b/i,
+  /\balc\b/i,
+  /\bvol\b/i,
+  // Awards and competitions.
+  /\b(iwsc|decanter|mundus\s+vini|concours|trophy|medal|medaille|médaille|points)\b/i,
+  // Classifications that describe the wine's rank, never its name.
+  /\b(cru\s+bourgeois|grand\s+cru|premier\s+cru|1er\s+cru|cru\s+class[ée]|class[ée]\s+de\s+graves)\b/i,
+  /\b(vieilles\s+vignes|old\s+vines|vecchie\s+vigne|vi[ñn]as\s+viejas)\b/i,
+  /\b(vino|vin|vinho)\s+(biologico|bio|org[aá]nico|biol[oó]gico)\b/i,
 ];
 
 /** Openings that mark a line as the producer's name with high confidence.
@@ -355,7 +392,10 @@ export const NON_VINTAGE_MARKERS = [
 export const DESCRIPTOR_WORDS = [
   'dry', 'sweet', 'semi', 'medium', 'off', 'extra', 'still', 'natural', 'organic',
   'biodynamic', 'unfiltered', 'unfined', 'vegan', 'table', 'quality', 'premium',
-  'classic', 'traditional', 'fine', 'old', 'vines',
+  'classic', 'traditional', 'fine', 'old', 'vines', 'pale', 'light', 'soft', 'late', 'harvest',
+  'reserva', 'riserva', 'reserve', 'gran', 'crianza', 'joven', 'solera', 'fino', 'oloroso',
+  'amontillado', 'manzanilla', 'cream', 'bio', 'biologico', 'organico', 'ecologico',
+  'sherry', 'vendemmia', 'vendange', 'vintage', 'nature', 'cuvee',
   'white', 'red', 'rose', 'amber', 'orange', 'pink',
   'wine', 'wines', 'vino', 'vin', 'vinho', 'wein', 'vini', 'vins',
   'qvevri', 'kvevri', 'sparkling', 'brut', 'sec', 'demi', 'doux',

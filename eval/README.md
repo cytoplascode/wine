@@ -27,6 +27,11 @@ Each run writes `eval/out/<extractor>-<stamp>.jsonl` (one row per image: truth,
 prediction, raw text, timing) and prints the score table. Numbers worth keeping
 go into `results.md`.
 
+A second set is chosen with `--data eval/data/winesensed` (layout in
+`data/README.md`); photos without truth are still run and recorded, and
+`node eval/import-winesensed.mjs <table.csv|.jsonl>` turns the dataset's
+own metadata into truth rows once it is available.
+
 Parser changes do not need a fresh OCR run: `node eval/parse-run.mjs [--show]`
 re-parses the lines recorded in the newest ppocr run (`meta.lines`) with the
 app's `parseLabel` in Node and prints the same table in under a second.

@@ -2,3 +2,8 @@ node_modules/
 _site/
 .DS_Store
 .tmp/
+
+# extraction bake-off: photos and run outputs stay local
+eval/data/images/
+eval/out/
+eval/models/

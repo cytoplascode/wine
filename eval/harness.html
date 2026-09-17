@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>extraction harness</title>
+<!-- A bare page with no app UI. The Playwright driver opens it with
+     ?extractor=<name> and calls window.extract(url) per image. Extractors
+     live in ./extractors/<name>.mjs and export extract(blob, options). -->
+<pre id="log"></pre>
+<script type="module">
+  const params = new URLSearchParams(location.search);
+  const name = params.get('extractor') || 'tesseract';
+  const options = JSON.parse(params.get('options') || '{}');
+  const log = (m) => { document.getElementById('log').textContent += `${m}\n`; };
+
+  window.harnessError = null;
+  try {
+    const mod = await import(`./extractors/${name}.mjs`);
+    window.extract = async (url) => {
+      const blob = await (await fetch(url, { cache: 'no-store' })).blob();
+      const t0 = performance.now();
+      const result = await mod.extract(blob, options);
+      return { ...result, ms: Math.round(performance.now() - t0) };
+    };
+    window.harnessReady = true;
+    log(`ready: ${name} ${JSON.stringify(options)}`);
+  } catch (err) {
+    window.harnessError = String(err && err.stack || err);
+    log(window.harnessError);
+  }
+</script>

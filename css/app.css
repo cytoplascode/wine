@@ -23,9 +23,18 @@
    easy to trip over given how much of this UI is toggled by that attribute. */
 [hidden] { display: none !important; }
 
+/* The app is a frame the size of whatever the browser is actually showing,
+   never a document that can be scrolled. `height: 100%` resolves against the
+   *large* viewport on Android — the height with the URL bar hidden — so while
+   that bar is up the page is taller than the visible area, the footer falls
+   below the fold, and the whole app has to be scrolled to reach its buttons.
+   Sizing to `dvh`, which follows the bar in and out, and forbidding document
+   scrolling keeps the footer on screen in both states. The regions that
+   should scroll (`.scroll`) say so themselves. */
 html, body {
   margin: 0;
-  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
   overscroll-behavior: none;
 }
 
@@ -49,11 +58,12 @@ body[data-screen="review"]   .screen[data-name="review"],
 body[data-screen="saved"]    .screen[data-name="saved"] {
   display: flex;
   flex-direction: column;
-  height: 100dvh;
+  height: 100%;
 }
 
 .topbar {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 4px;
   padding: max(8px, env(safe-area-inset-top)) var(--pad) 8px;
@@ -82,8 +92,12 @@ body[data-screen="review"] .scroll {
   padding-bottom: calc(80px + env(safe-area-inset-bottom));
 }
 
+/* The footer is the one thing that must never be pushed off: it holds the
+   button that moves the flow on. It keeps its content's height, and the
+   photo above it gives way instead. */
 .actions {
   display: flex;
+  flex: 0 0 auto;
   flex-direction: column;
   gap: 10px;
   padding: 12px var(--pad) calc(12px + env(safe-area-inset-bottom));
@@ -151,10 +165,13 @@ body[data-screen="review"] .scroll {
 
 /* A band of its own above the photo, at a fixed height so the stage below does
    not resize every time the label's proportions change. */
+/* Tall enough to judge the flattened label, but the first thing to give way
+   on a short screen (landscape, or a small phone with the URL bar showing) so
+   the crop stage and the footer both keep their room. */
 .preview {
   position: relative;
-  flex: 0 0 auto;
-  height: 136px;
+  flex: 0 1 auto;
+  height: clamp(84px, 16dvh, 136px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -163,9 +180,9 @@ body[data-screen="review"] .scroll {
   border-bottom: 1px solid var(--line);
 }
 
-.preview canvas {
+..preview canvas {
   max-width: 100%;
-  max-height: 120px;
+  max-height: 100%;
   display: block;
 }
 

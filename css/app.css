@@ -15,6 +15,11 @@
   --radius: 14px;
   --tap: 52px;
   --pad: 16px;
+  /* Height of the flattened-label band on the crop screen. Tall enough to
+     judge the result, and the first thing to give way on a short screen so
+     the photo and the buttons both keep their room. The loupe is sized from
+     it too, so nothing in the band can hang below it. */
+  --band: clamp(84px, 16dvh, 136px);
 }
 
 * { box-sizing: border-box; }
@@ -163,15 +168,12 @@ body[data-screen="review"] .scroll {
 
 /* ── Live flattened preview ──────────────────────────────────────── */
 
-/* A band of its own above the photo, at a fixed height so the stage below does
+/* A band of its own above the photo, at a set height so the stage below does
    not resize every time the label's proportions change. */
-/* Tall enough to judge the flattened label, but the first thing to give way
-   on a short screen (landscape, or a small phone with the URL bar showing) so
-   the crop stage and the footer both keep their room. */
 .preview {
   position: relative;
   flex: 0 1 auto;
-  height: clamp(84px, 16dvh, 136px);
+  height: var(--band);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -180,7 +182,10 @@ body[data-screen="review"] .scroll {
   border-bottom: 1px solid var(--line);
 }
 
-..preview canvas {
+/* The flattened label is drawn at whatever size its proportions call for, so
+   it is scaled down here to fit the band rather than spilling out of it. Both
+   caps are percentages of the band, which shrinks on a short screen. */
+.preview canvas {
   max-width: 100%;
   max-height: 100%;
   display: block;
@@ -416,9 +421,11 @@ body[data-screen="review"] .scroll {
    position against the label's edge is visible past the width of a
    fingertip. Sits under the Flattened tag rather than floating over the
    photo, so a finger can never end up covering it. */
+/* Sized to the band so it never hangs below it on a short screen. Its
+   backing bitmap stays 96px * dpr, so a smaller loupe is a sharper one. */
 .loupe {
-  width: 96px;
-  height: 96px;
+  width: min(96px, calc(var(--band) - 40px));
+  height: min(96px, calc(var(--band) - 40px));
   flex: 0 0 auto;
   border-radius: 50%;
   overflow: hidden;

@@ -147,7 +147,7 @@ export async function extract(blob, options = {}) {
     right: Math.max(...lines.map((l) => l.right)), bottom: Math.max(...lines.map((l) => l.top + l.height)),
   } : null;
   return {
-    fields, rawText: text, lineCount: lines.length, box,
+    fields, rawText: text, lineCount: lines.length, box, lines,
     timing: { det: Math.round(tDet), rec: Math.round(tRec), boxes: boxes.length },
     threads: threadsUsed, crossOriginIsolated: self.crossOriginIsolated,
   };

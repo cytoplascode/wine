@@ -132,3 +132,62 @@ italic body copy come through as fragments ("eracesfTro", "attisdid");
 Detection came free: the union of DB boxes is a tight label bounding box on
 all 8 photos (recorded per row as `meta.box` in the JSONL) — the input a
 future auto-placed crop would start from.
+
+## PP-OCRv4 + attribution rules in the parser — 2026-09-17
+
+Same OCR run as above; only `js/parse.js` and `js/wine-data.js` changed.
+Re-scored offline with `node eval/parse-run.mjs` (re-parses the recorded
+lines in under a second), then confirmed with a fresh `npm run eval`.
+
+```
+rows: 8   scored fields: 40   overall:  78%      (before: 45%, Tesseract: 18%)
+field         n   acc   sim
+winery         7   86%   80%                     (71%)
+wine           8   75%   75%                     ( 0%)
+vintage        6  100%  100%                     (100%)
+region         3   67%   67%                     ( 0%)
+country        6   83%   83%                     (67%)
+appellation    2   50%   50%                     ( 0%)
+grapes         8   63%   63%                     (38%)
+median 1047 ms/image  threads=4
+```
+
+Rules added, all general (no per-bottle special cases):
+
+- **Descriptor lines** ("WHITE DRY", "Qvevri Dry Amber", "Medium-Sweet") are
+  words that only describe the wine; they are never a name and never merge
+  into one.
+- **Marketing lines** ("LIMITED EDITION", "ESTD 1997", "PRODUCT OF …") are
+  excluded from the names likewise.
+- **Prose** — a line with sentence words ("was", "aged", "through") or a
+  long line with several stopwords — is body copy, not a name. Papari
+  Valley's back-story sentence no longer wins WineName.
+- **Merging is conservative**: a line that is already a field (vintage,
+  grape, place, descriptor) never continues the line above it, and neither
+  does a line below 50 confidence. NIMBI / RKATSITELI, KHIKHVI / country
+  stay separate lines.
+- **Junk fragments** (bare numbers, `%`, units, low-confidence one- or
+  two-letter reads) become rows of their own instead of being glued onto a
+  neighbour: "SHAVERDE 88 HS" is now "SHAVERDE".
+- **Wine-name fallback**: when no cuvée-style line exists, a line that is
+  wholly a grape ("RKATSITELI", "BLEND SAPERAVI") or wholly an appellation
+  ("MUKUZANI") is the wine name — that is how varietal-labelled and
+  PDO-labelled bottles are named.
+- **Georgian dictionaries**: 17 grapes, 19 PDOs with their regions, and
+  "amber" as a wine type. Plus Coteaux du Giennois for the Mellot bottle.
+
+Remaining misses, and why they are not parser bugs:
+
+- **Mellot** (29%): the top line is the appellation "COTEAUX DU GIENNOIS"
+  in an ornate face, read as "OTERUX DUGIENOS" at 78 confidence — a
+  recogniser error. Because it is the tallest clean-looking line it takes
+  Winemaker and pushes JOSEPH MELLOT to WineName. Fuzzy appellation
+  matching (edit distance against the dictionary) would catch this one and
+  is the obvious next rule; it also needs the accent-less *en* dictionary
+  to stop confusing È and E.
+- **Tezi** (60%): "Chinuri" is simply not printed on the front label in a
+  form the recogniser read. Needs the back label, or a second pass on the
+  small type.
+- **Papari, Shaverde** (grapes): Saperavi is not printed on the front.
+  Mukuzani is a Saperavi-only PDO, so an *appellation → implied grape*
+  table would fill Shaverde; Papari needs the back label.

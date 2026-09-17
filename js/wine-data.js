@@ -42,6 +42,12 @@ export const VARIETALS = [
   ['Arneis', 'White'], ['Ribolla Gialla', 'White'], ['Friulano', 'White'],
   ['Malvasia', 'White'], ['Assyrtiko', 'White'], ['Moschofilero', 'White'],
   ['Furmint', 'White'], ['Rkatsiteli', 'White'], ['Torrontés', 'White'],
+  // Georgia — where a label's wine name is very often just the grape.
+  ['Khikhvi', 'White'], ['Chinuri', 'White'], ['Kisi', 'White'], ['Mtsvane', 'White'],
+  ['Kakhuri Mtsvane', 'White'], ['Goruli Mtsvane', 'White'], ['Tsolikouri', 'White'],
+  ['Tsitska', 'White'], ['Krakhuna', 'White'], ['Aladasturi', 'Red'], ['Ojaleshi', 'Red'],
+  ['Tavkveri', 'Red'], ['Shavkapito', 'Red'], ['Otskhanuri Sapere', 'Red'],
+  ['Usakhelouri', 'Red'], ['Alexandrouli', 'Red'], ['Mujuretuli', 'Red'], ['Chkhaveri', 'Red'],
   ['Colombard', 'White'], ['Melon de Bourgogne', 'White'], ['Picpoul', 'White'],
   ['Clairette', 'White'], ['Bourboulenc', 'White'], ['Aligoté', 'White'],
   ['Savagnin', 'White'], ['Petite Arvine', 'White'], ['Koshu', 'White'],
@@ -57,6 +63,20 @@ export const VARIETALS = [
  * Pure grape names are deliberately absent — they belong to VARIETALS.
  */
 export const APPELLATIONS = [
+  // Georgia: the PDOs, plus the regions themselves (labels say "Kakheti, Georgia").
+  ['Mukuzani', 'Georgia', 'Kakheti'], ['Kindzmarauli', 'Georgia', 'Kakheti'],
+  ['Tsinandali', 'Georgia', 'Kakheti'], ['Napareuli', 'Georgia', 'Kakheti'],
+  ['Manavi', 'Georgia', 'Kakheti'], ['Akhasheni', 'Georgia', 'Kakheti'],
+  ['Kvareli', 'Georgia', 'Kakheti'], ['Teliani', 'Georgia', 'Kakheti'],
+  ['Gurjaani', 'Georgia', 'Kakheti'], ['Kotekhi', 'Georgia', 'Kakheti'],
+  ['Kardenakhi', 'Georgia', 'Kakheti'], ['Tibaani', 'Georgia', 'Kakheti'],
+  ['Vazisubani', 'Georgia', 'Kakheti'], ['Khashmi', 'Georgia', 'Kakheti'],
+  ['Khvanchkara', 'Georgia', 'Racha-Lechkhumi'], ['Tvishi', 'Georgia', 'Racha-Lechkhumi'],
+  ['Sviri', 'Georgia', 'Imereti'], ['Ateni', 'Georgia', 'Kartli'], ['Bolnisi', 'Georgia', 'Kartli'],
+  ['Kakheti', 'Georgia', 'Kakheti'], ['Kartli', 'Georgia', 'Kartli'], ['Imereti', 'Georgia', 'Imereti'],
+  ['Racha-Lechkhumi', 'Georgia', 'Racha-Lechkhumi'], ['Racha', 'Georgia', 'Racha-Lechkhumi'],
+  ['Guria', 'Georgia', 'Guria'], ['Samegrelo', 'Georgia', 'Samegrelo'],
+  ['Coteaux du Giennois', 'France', 'Loire'],
   // France — Bordeaux
   ['Margaux', 'France', 'Bordeaux'], ['Pauillac', 'France', 'Bordeaux'],
   ['Saint-Julien', 'France', 'Bordeaux'], ['Saint-Estèphe', 'France', 'Bordeaux'],
@@ -255,6 +275,7 @@ export const TYPE_WORDS = [
   ['Dessert', ['sauternes', 'moelleux', 'passito', 'late harvest', 'vendanges tardives',
     'beerenauslese', 'trockenbeerenauslese', 'eiswein', 'ice wine', 'dolce',
     'selection de grains nobles', 'vin de paille', 'recioto']],
+  ['Amber', ['amber wine', 'orange wine', 'qvevri amber', 'amber']],
   ['Rosé', ['rose wine', 'vin rose', 'rosato', 'rosado', 'rosé', 'rose']],
   ['White', ['white wine', 'vino bianco', 'vin blanc', 'vino blanco', 'weisswein',
     'vinho branco', 'bianco', 'blanc', 'blanco', 'branco', 'weiss']],
@@ -275,6 +296,9 @@ export const NOISE_PATTERNS = [
   /\bdistributed\s+by\b/i,
   /\bproduct\s+of\b/i,
   /\bproduce\s+of\b/i,
+  /\bproduced\s+(in|by)\b/i,
+  /^(est|estd|established|since|founded)\.?(\s+\d{4})?$/i,
+  /^(contr[oô]l[ée]e|prot[ée]g[ée]e)$/i,
   /\bmis\s+en\s+bouteille\b/i,
   /\bestate\s+bottled\b/i,
   /\bbottled\s+by\b/i,
@@ -322,4 +346,46 @@ export const VINEYARD_PATTERNS = [
 export const NON_VINTAGE_MARKERS = [
   'est', 'estd', 'established', 'since', 'founded', 'fondee', 'fondata',
   'fundada', 'gegrundet', 'anno', 'depuis', 'dal', 'desde', 'seit', 'aoc',
+];
+
+/** Words a line can be made of entirely and still say nothing about *which*
+ *  wine it is: colour, sweetness, style, the word "wine" in a few languages.
+ *  "DRY RED GEORGIAN WINE" or "QVEVRI AMBER" describe the bottle; they never
+ *  name it, and they must never be offered as a producer or a cuvée. */
+export const DESCRIPTOR_WORDS = [
+  'dry', 'sweet', 'semi', 'medium', 'off', 'extra', 'still', 'natural', 'organic',
+  'biodynamic', 'unfiltered', 'unfined', 'vegan', 'table', 'quality', 'premium',
+  'classic', 'traditional', 'fine', 'old', 'vines',
+  'white', 'red', 'rose', 'amber', 'orange', 'pink',
+  'wine', 'wines', 'vino', 'vin', 'vinho', 'wein', 'vini', 'vins',
+  'qvevri', 'kvevri', 'sparkling', 'brut', 'sec', 'demi', 'doux',
+  'blanc', 'blanche', 'rouge', 'rosso', 'bianco', 'tinto', 'blanco', 'rosado', 'rosato',
+  'georgian', 'french', 'italian', 'spanish', 'german', 'portuguese', 'greek',
+  'of', 'de', 'di', 'du', 'and', 'e', 'y', 'the', 'a',
+];
+
+/** Lines that are pure marketing and never a name. */
+export const MARKETING_PATTERNS = [
+  /^(limited|special|numbered|anniversary|collectors?'?s?)\s+(edition|release)$/i,
+  /^(family|estate)\s+(owned|grown|run)$/i,
+  /^hand\s*(picked|crafted|harvested|made)$/i,
+  /^small\s+batch$/i,
+  /^(vegan|organic|natural)\s+(wine|friendly)$/i,
+];
+
+/** English function words that show up in back-label prose and, "The
+ *  Prisoner" aside, essentially never inside a wine's or a producer's name.
+ *  A leading "the" is allowed by the caller. */
+export const PROSE_WORDS = [
+  'and', 'was', 'is', 'are', 'were', 'this', 'with', 'from', 'our', 'has', 'have',
+  'that', 'which', 'its', 'it', 'we', 'you', 'your', 'been', 'into', 'on',
+];
+
+/** Small multilingual stopword set for the "is this a sentence?" density test. */
+export const STOPWORDS = [
+  'the', 'a', 'an', 'and', 'of', 'in', 'on', 'with', 'from', 'by', 'to', 'for', 'at', 'is', 'was',
+  'le', 'la', 'les', 'des', 'du', 'de', 'et', 'un', 'une', 'est', 'sur', 'dans', 'avec', 'pour',
+  'il', 'lo', 'gli', 'di', 'del', 'della', 'e', 'con', 'per', 'da',
+  'el', 'los', 'las', 'y', 'para', 'por',
+  'der', 'die', 'das', 'und', 'mit', 'von', 'aus', 'im',
 ];

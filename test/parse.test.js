@@ -319,3 +319,72 @@ test('plain text without geometry still parses', () => {
   assert.equal(fields.Country, 'Spain');
   assert.equal(fields.Varieties, 'Tempranillo');
 });
+
+/* ── Attribution against real PP-OCR output ─────────────────────────── */
+
+test('a descriptor line is never promoted to a name', () => {
+  const fields = parse([['NIMBI', 100], ['RKATSITELI', 80], ['WHITE DRY WINE', 40], ['2024', 30]]);
+  assert.equal(fields.Winemaker, 'NIMBI');
+  assert.equal(fields.WineName, 'RKATSITELI');
+  assert.equal(fields.Type, 'White');
+  assert.equal(fields.Varieties, 'Rkatsiteli');
+});
+
+test('a varietal-backed line becomes the wine name when nothing else fits', () => {
+  const fields = parse([['UNICO', 100], ['BLEND SAPERAVI', 40], ['2022', 30]]);
+  assert.equal(fields.Winemaker, 'UNICO');
+  assert.equal(fields.WineName, 'BLEND SAPERAVI');
+  assert.equal(fields.Varieties, 'Saperavi');
+});
+
+test('marketing copy is excluded from the names', () => {
+  const fields = parse([['LIMITED EDITION', 100], ['TEZI WINERY', 60], ['2022', 50]]);
+  assert.equal(fields.Winemaker, 'TEZI WINERY');
+  assert.equal(fields.WineName, undefined);
+});
+
+test('a sentence of body copy is not a wine name', () => {
+  const fields = parse([
+    ['Papari Valley', 100],
+    ['was finally aged in the Qvevri number 5.', 60],
+    ['3 Qvevri Terraces', 40],
+  ]);
+  assert.equal(fields.Winemaker, 'Papari Valley');
+  assert.equal(fields.WineName, '3 Qvevri Terraces');
+});
+
+test('a line that is a field of its own does not continue the line above', () => {
+  const merged = mergeWrappedLines([
+    { text: 'NIMBI', height: 100, top: 0, confidence: 99 },
+    { text: 'RKATSITELI', height: 80, top: 130, confidence: 100 },
+  ]);
+  assert.equal(merged.length, 2);
+});
+
+test('junk fragments on a row are not glued onto the name', () => {
+  const rows = joinRowFragments([
+    { text: 'SHAVERDE', height: 355, top: 100, left: 40, right: 900, confidence: 99 },
+    { text: '88', height: 335, top: 110, left: 920, right: 1100, confidence: 49 },
+    { text: 'HS', height: 237, top: 150, left: 1120, right: 1300, confidence: 28 },
+  ]);
+  const name = rows.find((r) => r.text.startsWith('SHAVERDE'));
+  assert.equal(name.text, 'SHAVERDE');
+  assert.equal(name.confidence, 99);
+});
+
+test('an appellation-only line can be the wine name', () => {
+  const fields = parse([['SHAVERDE', 100], ['MUKUZANI', 40], ['Dry Red Georgian Wine', 30], ['2024', 25]]);
+  assert.equal(fields.Winemaker, 'SHAVERDE');
+  assert.equal(fields.WineName, 'MUKUZANI');
+  assert.equal(fields.Appelation, 'Mukuzani');
+  assert.equal(fields.Region, 'Kakheti');
+  assert.equal(fields.Country, 'Georgia');
+});
+
+test('Georgian dictionaries: grapes, PDOs and amber wine', () => {
+  const fields = parse([['BABUNIDZE', 60], ['KHIKHVI', 80], ['Qvevri Amber', 30], ['Kakheti, Georgia', 30]]);
+  assert.equal(fields.Varieties, 'Khikhvi');
+  assert.equal(fields.Type, 'Amber');
+  assert.equal(fields.Region, 'Kakheti');
+  assert.equal(fields.Country, 'Georgia');
+});

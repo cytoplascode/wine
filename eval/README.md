@@ -27,6 +27,12 @@ Each run writes `eval/out/<extractor>-<stamp>.jsonl` (one row per image: truth,
 prediction, raw text, timing) and prints the score table. Numbers worth keeping
 go into `results.md`.
 
+Parser changes do not need a fresh OCR run: `node eval/parse-run.mjs [--show]`
+re-parses the lines recorded in the newest ppocr run (`meta.lines`) with the
+app's `parseLabel` in Node and prints the same table in under a second.
+`--show` lists every photo's lines tallest-first next to the fields assigned,
+which is the fastest way to see *why* a name went to the wrong slot.
+
 Extractors run **in headless Chromium**, not in Node — the same WASM/WebGPU
 code path the phone uses is what gets timed.
 

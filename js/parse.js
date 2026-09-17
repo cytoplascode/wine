@@ -15,6 +15,10 @@ import {
   PRODUCER_SUFFIXES,
   VINEYARD_PATTERNS,
   NON_VINTAGE_MARKERS,
+  DESCRIPTOR_WORDS,
+  MARKETING_PATTERNS,
+  PROSE_WORDS,
+  STOPWORDS,
 } from './wine-data.js';
 
 /** Accent-folded, punctuation-flattened, lower case. Apostrophes survive so
@@ -73,6 +77,50 @@ export function isNoise(text) {
 
 const isYearOnly = (text) => /^\s*(19|20)\d{2}\s*$/.test(text);
 
+const DESCRIPTORS = new Set(DESCRIPTOR_WORDS);
+const PROSE = new Set(PROSE_WORDS);
+const STOP = new Set(STOPWORDS);
+
+/** "DRY RED GEORGIAN WINE": every word describes the bottle, none names it. */
+export function isDescriptorLine(text) {
+  const words = normalize(text).split(' ').filter(Boolean);
+  return words.length > 0 && words.every((w) => DESCRIPTORS.has(w));
+}
+
+export const isMarketingLine = (text) => MARKETING_PATTERNS.some((re) => re.test(text.trim()));
+
+/** Back-label prose rather than a name: an English function word anywhere
+ *  ("aged in the Qvevri", "ed oak. On the") — a leading "the" is a name's
+ *  privilege — or a long line with the stopword density of a sentence. */
+export function isProse(text) {
+  const words = normalize(text).split(' ').filter(Boolean);
+  if (!words.length) return false;
+  if (words.some((w, i) => PROSE.has(w) || (w === 'the' && i > 0))) return true;
+  const stops = words.filter((w) => STOP.has(w)).length;
+  return words.length >= 8 && stops >= 2;
+}
+
+/** A recognised fragment too small and too uncertain to be glued onto a
+ *  neighbour: "88", "HS", "%" beside a real word on the same row. */
+function isJunkFragment(line) {
+  const text = (line.text || '').trim();
+  const letters = normalize(text).replace(/[^a-z]/g, '');
+  if (/^[\d\s.,%-]+$/.test(text)) return true;
+  if (/^\d{2,4}\s?(ml|cl|l)$/i.test(text)) return true;
+  return (line.confidence ?? 100) < 50 && letters.length <= 2;
+}
+
+/** Does this line, on its own, already say what it is — a grape, a place, a
+ *  year, packaging, a description? Such a line is a field in its own right
+ *  and must not be fused with the line above it. */
+function isFieldLike(text) {
+  if (isYearOnly(text) || isNoise(text) || isDescriptorLine(text)) return true;
+  if (isMarketingLine(text) || isProse(text)) return true;
+  const normalized = normalize(text);
+  const hit = (list) => list.some(([name]) => contains(normalized, normalize(name)));
+  return hit(SORTED_VARIETALS) || hit(SORTED_COUNTRIES) || hit(SORTED_APPELLATIONS);
+}
+
 /**
  * Read a label.
  * `lines` carry `{ text, height, top }`; `text` is the whole recognised block.
@@ -101,17 +149,25 @@ export function parseLabel({ text = '', lines = [] } = {}, now = new Date()) {
   }
 
   const varieties = findVarieties(fullText);
+  let varietyLine = null;
   if (varieties.length) {
     fields.Varieties = varieties.map((v) => v.name).join(', ');
     markLinesContaining(normalizedLines, varieties.map((v) => v.needle), claimed);
+    varietyLine = bareLine(merged, normalizedLines, varieties.map((v) => v.needle), 2);
   }
 
   const appellation = findAppellation(merged, normalizedLines);
+  let appellationLine = null;
   if (appellation) {
     fields.Appelation = appellation.name;
     if (appellation.country) fields.Country = appellation.country;
     if (appellation.region) fields.Region = appellation.region;
     claimed.add(appellation.lineIndex);
+    const i = appellation.lineIndex;
+    if (!APPELLATION_MARKER.test(merged[i].text)
+        && leftoverWords(normalizedLines[i], [normalize(appellation.name)]) <= 1) {
+      appellationLine = { ...merged[i], index: i };
+    }
   }
 
   if (!fields.Country) {
@@ -137,7 +193,7 @@ export function parseLabel({ text = '', lines = [] } = {}, now = new Date()) {
     claimed.add(winemaker.lineIndex);
   }
 
-  const wineName = findWineName(merged, normalizedLines, claimed);
+  const wineName = findWineName(merged, normalizedLines, claimed, { varietyLine, appellationLine });
   if (wineName) {
     fields.WineName = wineName.name;
     claimed.add(wineName.lineIndex);
@@ -164,8 +220,12 @@ export function parseLabel({ text = '', lines = [] } = {}, now = new Date()) {
 export function joinRowFragments(lines) {
   if (!lines.some((line) => line.right > line.left)) return lines.map((line) => ({ ...line }));
 
-  const remaining = lines.map((line) => ({ ...line }));
-  const rows = [];
+  // Junk pieces are emitted as rows of their own rather than glued onto a
+  // neighbour: a vintage or a volume still needs to exist as a line, but
+  // "SHAVERDE 88 HS" and "11% Aladasturi Rosé" are not names.
+  const junk = lines.filter(isJunkFragment).map((line) => ({ ...line }));
+  const remaining = lines.filter((line) => !isJunkFragment(line)).map((line) => ({ ...line }));
+  const rows = [...junk];
 
   while (remaining.length) {
     const seed = remaining.shift();
@@ -224,14 +284,42 @@ export function mergeWrappedLines(lines) {
 
 function canMerge(a, b) {
   if (!a.height || !b.height) return false;
-  // A vintage sits alone, however close it is to the name above it.
-  if (isYearOnly(a.text) || isYearOnly(b.text)) return false;
+  // A line that is already a field of its own — a vintage, a grape, a place,
+  // a description — never continues the line above it. This is what keeps
+  // "NIMBI" and "RKATSITELI" apart when they sit close on a tall label.
+  if (isFieldLike(a.text) || isFieldLike(b.text)) return false;
+  if ((a.confidence ?? 100) < 50 || (b.confidence ?? 100) < 50) return false;
 
   const ratio = a.height / b.height;
-  if (ratio < 0.6 || ratio > 1.67) return false;
+  if (ratio < 0.7 || ratio > 1.43) return false;
 
+  // Wrapped names sit tight; a gap of half a line is a new line.
   const gap = b.top - (a.top + a.height);
-  return gap >= -a.height * 0.5 && gap < a.height * 0.9;
+  return gap >= -a.height * 0.5 && gap < a.height * 0.5;
+}
+
+/** How many words of `normalized` are neither one of `needles` nor a
+ *  descriptor — what is left once the grape or place and the adjectives
+ *  around it are removed. "blend saperavi" → 1 ("blend"); "khikhvi" → 0. */
+function leftoverWords(normalized, needles) {
+  let rest = ` ${normalized} `;
+  for (const needle of needles) rest = rest.split(` ${needle} `).join(' ');
+  return rest.split(' ').filter((w) => w && !DESCRIPTORS.has(w)).length;
+}
+
+/** The tallest line that is essentially just one of `needles` (plus at most
+ *  `maxLeftover` other words): "RKATSITELI", "BLEND SAPERAVI", "Aladasturi
+ *  Rosé". On a varietal-labelled bottle that line *is* the wine's name. */
+function bareLine(lines, normalizedLines, needles, maxLeftover) {
+  let best = null;
+  lines.forEach((line, index) => {
+    const normalized = normalizedLines[index];
+    if (!needles.some((needle) => contains(normalized, needle))) return;
+    if (isProse(line.text) || isNoise(line.text)) return;
+    if (leftoverWords(normalized, needles) > maxLeftover) return;
+    if (!best || line.height > best.height) best = { ...line, index };
+  });
+  return best;
 }
 
 function markLinesContaining(normalizedLines, needles, claimed) {
@@ -437,7 +525,7 @@ function findWinemaker(lines, normalizedLines, claimed) {
   return tallest ? { name: tidy(tallest.text), lineIndex: tallest.index } : null;
 }
 
-function findWineName(lines, normalizedLines, claimed) {
+function findWineName(lines, normalizedLines, claimed, { varietyLine, appellationLine } = {}) {
   for (let i = 0; i < lines.length; i++) {
     if (claimed.has(i)) continue;
     if (/^(cuv[ée]e|selecci[oó]n|selezione|reserva|riserva|gran reserva)\b/i.test(lines[i].text.trim())) {
@@ -446,7 +534,17 @@ function findWineName(lines, normalizedLines, claimed) {
   }
 
   const tallest = tallestUnclaimed(lines, claimed);
-  return tallest ? { name: tidy(tallest.text), lineIndex: tallest.index } : null;
+  // A line that is just a grape or just an appellation is, on most of the
+  // world's labels, the wine's name — "Rkatsiteli", "Mukuzani", "Chablis".
+  // It is certain to be a real word about this wine, which an unknown line
+  // of similar size is not, so it wins unless the unknown line is clearly
+  // the bigger one.
+  const backed = varietyLine || appellationLine;
+  if (tallest && backed && backed.height >= tallest.height * 0.8) {
+    return { name: tidy(backed.text), lineIndex: backed.index };
+  }
+  if (tallest) return { name: tidy(tallest.text), lineIndex: tallest.index };
+  return backed ? { name: tidy(backed.text), lineIndex: backed.index } : null;
 }
 
 /**
@@ -460,7 +558,8 @@ function findWineName(lines, normalizedLines, claimed) {
 export function looksLikeName(text, confidence = 100) {
   const normalized = normalize(text);
   if (!normalized || isNoise(text) || isYearOnly(text)) return false;
-  if (confidence && confidence < 55) return false;
+  if (isDescriptorLine(text) || isMarketingLine(text) || isProse(text)) return false;
+  if (confidence && confidence < 65) return false;
 
   const letters = normalized.replace(/[^a-z]/g, '');
   if (letters.length < 4) return false;

@@ -1460,6 +1460,7 @@ $('#btn-another').addEventListener('click', newBottle);
 $('#btn-home').addEventListener('click', () => go('home'));
 $('#btn-settings').addEventListener('click', () => { retireCoachMark(); go('settings'); });
 $('#btn-coach-dismiss').addEventListener('click', retireCoachMark);
+$('#btn-coach-open').addEventListener('click', () => { retireCoachMark(); go('settings'); });
 $('#btn-settings-back').addEventListener('click', goBack);
 $('#btn-capture-back').addEventListener('click', goBack);
 $('#btn-crop-back').addEventListener('click', goBack);

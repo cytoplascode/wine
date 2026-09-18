@@ -488,14 +488,37 @@ body[data-screen="review"] .scroll {
   line-height: 1.4;
 }
 
+/* The instruction comes first and carries the weight; the detail under it
+   explains what is behind the gear once they get there. */
+.coach-lead {
+  margin-bottom: 6px !important;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.coach-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 10px;
+}
+
 .coach .btn {
-  min-height: 36px;
-  margin-top: 6px;
-  padding: 0 10px;
+  width: auto;
+  min-height: 40px;
+  margin: 0;
+  padding: 0 14px;
   border: 0;
+  border-radius: 8px;
+  background: #ffffff1f;
   color: #fff;
   font-size: 14px;
   font-weight: 700;
+}
+
+.coach .btn-quiet {
+  background: transparent;
+  font-weight: 600;
   text-decoration: underline;
 }
 

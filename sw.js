@@ -10,7 +10,7 @@
  * once downloaded, since a vendored build never changes under its own name.
  */
 
-const SHELL_CACHE = 'shell-v15';
+const SHELL_CACHE = 'shell-v16';
 
 /* The OCR cache is deliberately *not* versioned with the shell. Those files are
  * vendored and immutable — a new build of Tesseract would arrive under a new

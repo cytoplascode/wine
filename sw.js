@@ -10,7 +10,7 @@
  * once downloaded, since a vendored build never changes under its own name.
  */
 
-const SHELL_CACHE = 'shell-v12';
+const SHELL_CACHE = 'shell-v13';
 
 /* The OCR cache is deliberately *not* versioned with the shell. Those files are
  * vendored and immutable — a new build of Tesseract would arrive under a new
@@ -18,7 +18,7 @@ const SHELL_CACHE = 'shell-v12';
  * the user's phone every time a stylesheet changed. `ocr-v2` is the name earlier
  * versions wrote to, kept alive so nobody has to download the packs twice. */
 const OCR_CACHE = 'ocr';
-/* The label finder is a separate, optional 37 MB, so it gets its own cache
+/* The label finder is a separate, optional 38 MB, so it gets its own cache
    and can be cleared without taking the recogniser with it. */
 const SAM_CACHE = 'sam';
 /* The finder runs on the same ONNX Runtime as the text engine, so the

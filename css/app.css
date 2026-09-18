@@ -176,6 +176,23 @@ body[data-screen="review"] .scroll {
 
 .card .hint { margin-top: 10px; }
 
+/* A paragraph that introduces the fields below it needs room under it too,
+   or the first label reads as part of the sentence. */
+.card .hint + .field,
+.card .muted + #quickadd-form { margin-top: 12px; }
+
+/* The mode switch is not part of the folder settings above it — it changes
+   how the whole card works — so it gets a rule to sit behind. */
+#btn-vault-mode {
+  margin-top: 18px;
+  padding-top: 18px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  color: var(--muted);
+  font-weight: 600;
+}
+
 /* ── Live flattened preview ──────────────────────────────────────── */
 
 /* A band of its own above the photo, at a set height so the stage below does
@@ -327,6 +344,63 @@ body[data-screen="review"] .scroll {
   border-radius: 50%;
   background: var(--accent);
   box-shadow: 0 0 0 2px var(--surface);
+}
+
+/* ── First-run coach mark ────────────────────────────────────────── */
+
+/* Nothing in the app works until the vault is connected and the text engine
+   downloaded, and neither is discoverable from the home screen — the gear is
+   a single character in the corner. So on a first run the gear gets a bubble
+   with an arrow pointing back up at it. Shown once: dismissing it, or simply
+   opening Settings, retires it for good. */
+
+.screen[data-name="home"] { position: relative; }
+
+.coach {
+  position: absolute;
+  z-index: 40;
+  /* Just below the topbar, whose height is its padding plus the gear. */
+  top: calc(max(8px, env(safe-area-inset-top)) + 46px);
+  right: 10px;
+  left: 10px;
+  max-width: 290px;
+  margin-left: auto;
+  padding: 12px 14px 10px;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 10px 26px #000000b0;
+}
+
+/* The arrow: a corner of the bubble itself, turned to a point. Lined up under
+   the gear, which sits 16px from the trailing edge. */
+.coach::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  right: 18px;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: inherit;
+  transform: rotate(45deg);
+}
+
+.coach p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.coach .btn {
+  min-height: 36px;
+  margin-top: 6px;
+  padding: 0 10px;
+  border: 0;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: underline;
 }
 
 .shutter {

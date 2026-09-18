@@ -945,6 +945,34 @@ async function refreshSettingsBadge() {
     needsAttention = true;
   }
   badge.hidden = !needsAttention;
+  showCoachMark(needsAttention);
+}
+
+/* ── First-run coach mark ───────────────────────────────────────────── */
+
+const COACH_KEY = 'label-scanner-coach';
+
+const coachSeen = () => {
+  try { return localStorage.getItem(COACH_KEY) === 'seen'; } catch { return true; }
+};
+
+function retireCoachMark() {
+  try { localStorage.setItem(COACH_KEY, 'seen'); } catch { /* private mode */ }
+  const coach = $('#coach-settings');
+  if (coach) coach.hidden = true;
+}
+
+/**
+ * A bubble pointing at the gear, on a first run only. The gear is one
+ * character in a corner, and until the vault is connected and the text
+ * engine downloaded the app cannot do the thing it is for — so it is worth
+ * one nudge, and exactly one: dismissing it or opening Settings retires it.
+ * A phone that is already set up never sees it at all.
+ */
+function showCoachMark(needsAttention) {
+  const coach = $('#coach-settings');
+  if (!coach) return;
+  coach.hidden = !needsAttention || coachSeen();
 }
 
 async function onVaultButton() {
@@ -1303,7 +1331,8 @@ renderLanguageChips();
 $('#btn-new-bottle').addEventListener('click', newBottle);
 $('#btn-another').addEventListener('click', newBottle);
 $('#btn-home').addEventListener('click', () => go('home'));
-$('#btn-settings').addEventListener('click', () => go('settings'));
+$('#btn-settings').addEventListener('click', () => { retireCoachMark(); go('settings'); });
+$('#btn-coach-dismiss').addEventListener('click', retireCoachMark);
 $('#btn-settings-back').addEventListener('click', goBack);
 $('#btn-capture-back').addEventListener('click', goBack);
 $('#btn-crop-back').addEventListener('click', goBack);

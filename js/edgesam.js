@@ -47,11 +47,20 @@ export function configure(next) {
   loaded = null;
 }
 
-/** Both weight files present in the cache? The button asks before running. */
+/** Every file the finder needs, as absolute URLs: the shared ONNX Runtime
+ *  and the two weights. The Settings card counts these itself rather than
+ *  asking the service worker, so it says something true even when an older
+ *  worker is still in charge of the page. */
+export function modelAssets() {
+  return [
+    ...Object.values(ORT_FILES).map((f) => `${ortVendor()}${f}`),
+    ...Object.values(FILES).map((f) => `${settings.vendor}${f}`),
+  ];
+}
+
+/** All of them present in the cache? The button asks before running. */
 export function isModelCached() {
-  const ort = Object.values(ORT_FILES).map((f) => `${ortVendor()}${f}`);
-  const sam = Object.values(FILES).map((f) => `${settings.vendor}${f}`);
-  return filesCached([...ort, ...sam]);
+  return filesCached(modelAssets());
 }
 
 /* ── Pure pieces ─────────────────────────────────────────────────────── */

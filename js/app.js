@@ -1004,7 +1004,7 @@ $('#btn-save-folders').addEventListener('click', () => {
  * depends on vault status), settings shows the vault card, the folders
  * card, and lets the OCR card refresh itself. */
 onEnter('home', () => { renderDraftsCard(); renderRecentCard(); refreshSettingsBadge(); });
-onEnter('settings', () => { renderVaultCard(); renderFoldersCard(); });
+onEnter('settings', () => { renderVaultCard(); renderFoldersCard(); refreshSamCard(); });
 
 /* ── Offline OCR status ─────────────────────────────────────────────── */
 
@@ -1120,6 +1120,31 @@ const samStatus = $('#sam-status');
 const samBar = $('#sam-bar');
 const samCacheBtn = $('#btn-cache-sam');
 
+/* The card counts the cached files itself. Asking the service worker meant
+ * the card sat on "Checking…" forever whenever an older worker was still in
+ * charge of the page — it has no reply for a message it was shipped without,
+ * and the page cannot tell silence from a slow answer. `caches` is readable
+ * from here, so the question does not need a worker at all; the worker is
+ * still what does the downloading, and its progress messages still arrive. */
+let samDownloading = false;
+let samHeard = false;   // has the worker answered about the finder at all?
+
+async function refreshSamCard() {
+  if (samDownloading) return;
+  try {
+    const { modelAssets } = await import('./edgesam.js');
+    const assets = modelAssets();
+    const hits = await Promise.all(assets.map((url) => caches.match(url)));
+    renderSamProgress({ done: hits.filter(Boolean).length, total: assets.length,
+      complete: hits.every(Boolean) });
+  } catch (err) {
+    samDot.dataset.state = 'err';
+    samStatus.textContent = `Could not check: ${err.message}`;
+    samBar.hidden = true;
+    samCacheBtn.hidden = false;
+  }
+}
+
 function renderSamProgress({ done, total, complete, error }) {
   if (error) {
     samDot.dataset.state = 'err';
@@ -1162,7 +1187,11 @@ async function registerServiceWorker() {
   }
   navigator.serviceWorker.addEventListener('message', (event) => {
     if (event.data && event.data.type === 'ocr-progress') renderOcrProgress(event.data);
-    if (event.data && event.data.type === 'sam-progress') renderSamProgress(event.data);
+    if (event.data && event.data.type === 'sam-progress') {
+      samHeard = true;
+      if (event.data.complete || event.data.error) samDownloading = false;
+      renderSamProgress(event.data);
+    }
   });
   // The worker adds the cross-origin-isolation headers that let recognition
   // use several cores, but only to pages it serves — this one, on a first
@@ -1186,7 +1215,7 @@ async function registerServiceWorker() {
     await navigator.serviceWorker.register('./sw.js');
     await navigator.serviceWorker.ready;
     messageServiceWorker(ocrRequest('ocr-status'));
-    messageServiceWorker({ type: 'sam-status' });
+    refreshSamCard();
   } catch (err) {
     ocrDot.dataset.state = 'err';
     ocrStatus.textContent = `Offline setup failed: ${err.message}`;
@@ -1228,8 +1257,21 @@ ocrCacheBtn.addEventListener('click', () => {
 
 samCacheBtn.addEventListener('click', () => {
   samCacheBtn.hidden = true;
+  samDownloading = true;
+  samHeard = false;
   toast('Downloading the label finder…');
   messageServiceWorker({ type: 'cache-sam' });
+  // A worker too old to know `cache-sam` never answers at all, which would
+  // leave the card stuck. One silent second is enough to tell that apart
+  // from a slow download, which reports its first file straight away.
+  setTimeout(() => {
+    if (samHeard || !samDownloading) return;
+    samDownloading = false;
+    samStatus.textContent = 'The app has an update waiting — close it and open it again, then try the download.';
+    samDot.dataset.state = 'warn';
+    samBar.hidden = true;
+    samCacheBtn.hidden = false;
+  }, 5000);
 });
 
 vaultButton.addEventListener('click', onVaultButton);

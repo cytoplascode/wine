@@ -413,6 +413,7 @@ body[data-screen="review"] .scroll {
 }
 
 .setup-need[data-need="needed"] { background: var(--accent); color: #fff; }
+.setup-need[data-need="recommended"] { background: #c8324f38; color: #e8889b; }
 .setup-need[data-need="optional"] { background: var(--surface-2); color: var(--muted); }
 
 .setup-state { font-size: 13px; line-height: 1.35; color: var(--muted); }

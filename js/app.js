@@ -1083,8 +1083,8 @@ const SETUP_STEPS = [
     key: 'sam',
     card: 'sam-card',
     name: 'Label finder',
-    need: 'Optional',
-    todo: 'Not downloaded — the crop screen works without it',
+    need: 'Recommended',
+    todo: 'Not downloaded — worth having for labels with no clear edge',
     done: 'Downloaded and ready',
   },
 ];

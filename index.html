@@ -45,9 +45,10 @@
   </div>
 
   <div class="coach" id="coach-settings" hidden>
-    <p>Set up in here. You need the <strong>text engine</strong> — it reads the label.
-      The <strong>label finder</strong> and your <strong>Obsidian vault</strong> are both
-      optional; with no vault, notes and photos go to your downloads instead.</p>
+    <p>Set up in here. You need the <strong>text engine</strong> — it reads the label. The
+      <strong>label finder</strong> is optional but recommended. An
+      <strong>Obsidian vault</strong> is optional too — without one, notes and photos go
+      to your downloads instead.</p>
     <button class="btn btn-quiet" id="btn-coach-dismiss">Got it</button>
   </div>
 
@@ -128,18 +129,18 @@
     <div class="card" id="sam-card">
       <div class="card-head">
         <span class="dot" id="sam-dot"></span>
-        <h2>Label finder (optional)</h2>
+        <h2>Label finder</h2>
       </div>
       <p class="muted" id="sam-status">Checking…</p>
       <div class="bar" id="sam-bar" hidden><i></i></div>
-      <p class="muted hint">Adds a <strong>Find</strong> button to the crop screen. Put the
-        six handles roughly around the label, press it, and a segmentation model traces the
-        label's outline for you.</p>
+      <p class="muted hint"><strong>Optional, but recommended.</strong> Adds a
+        <strong>Find</strong> button to the crop screen: put the six handles roughly around
+        the label, press it, and a segmentation model traces the label's outline for you.</p>
       <p class="muted hint">The crop screen's <strong>Snap</strong> already pulls the handles
-        onto the paper's edge, and on our test bottles Find scores about the same — its own
-        case is a label with no visible edge to snap to, such as dark paper on a dark bottle.
-        It costs 38 MB and about a second a photo, which is why it is optional. Everything
-        works without it.</p>
+        onto the paper's edge, and on our test bottles the two score about the same. What
+        Find adds is the case Snap cannot do at all — a label with no visible edge to snap
+        to, such as dark paper on a dark bottle. It costs 38 MB and about a second a photo,
+        and everything works without it.</p>
       <button class="btn btn-quiet" id="btn-cache-sam" hidden>Download for offline use</button>
     </div>
   </div>

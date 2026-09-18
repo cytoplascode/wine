@@ -1113,6 +1113,38 @@ function renderLanguageChips() {
     : `${size} MB of language data. Pick the languages your labels are printed in.`;
 }
 
+/* ── Optional label finder ──────────────────────────────────────────── */
+
+const samDot = $('#sam-dot');
+const samStatus = $('#sam-status');
+const samBar = $('#sam-bar');
+const samCacheBtn = $('#btn-cache-sam');
+
+function renderSamProgress({ done, total, complete, error }) {
+  if (error) {
+    samDot.dataset.state = 'err';
+    samStatus.textContent = `Download failed — ${error}`;
+    samBar.hidden = true;
+    samCacheBtn.hidden = false;
+    samCacheBtn.textContent = 'Retry download';
+    return;
+  }
+  if (complete) {
+    samDot.dataset.state = 'ok';
+    samStatus.textContent = 'Ready — the crop screen\'s Find button will use it.';
+    samBar.hidden = true;
+    samCacheBtn.hidden = true;
+    return;
+  }
+  samDot.dataset.state = 'warn';
+  samBar.hidden = done === 0;
+  samBar.querySelector('i').style.width = `${Math.round((done / total) * 100)}%`;
+  samStatus.textContent = done === 0
+    ? 'Not downloaded — Find will ask for it.'
+    : `Downloading… ${done} of ${total} files.`;
+  samCacheBtn.hidden = done !== 0;
+}
+
 async function messageServiceWorker(payload) {
   if (!('serviceWorker' in navigator)) return;
   const registration = await navigator.serviceWorker.ready;
@@ -1130,6 +1162,7 @@ async function registerServiceWorker() {
   }
   navigator.serviceWorker.addEventListener('message', (event) => {
     if (event.data && event.data.type === 'ocr-progress') renderOcrProgress(event.data);
+    if (event.data && event.data.type === 'sam-progress') renderSamProgress(event.data);
   });
   // The worker adds the cross-origin-isolation headers that let recognition
   // use several cores, but only to pages it serves — this one, on a first
@@ -1153,6 +1186,7 @@ async function registerServiceWorker() {
     await navigator.serviceWorker.register('./sw.js');
     await navigator.serviceWorker.ready;
     messageServiceWorker(ocrRequest('ocr-status'));
+    messageServiceWorker({ type: 'sam-status' });
   } catch (err) {
     ocrDot.dataset.state = 'err';
     ocrStatus.textContent = `Offline setup failed: ${err.message}`;
@@ -1190,6 +1224,12 @@ ocrCacheBtn.addEventListener('click', () => {
   ocrCacheBtn.hidden = true;
   toast('Downloading the recognition engine…');
   messageServiceWorker(ocrRequest('cache-ocr'));
+});
+
+samCacheBtn.addEventListener('click', () => {
+  samCacheBtn.hidden = true;
+  toast('Downloading the label finder…');
+  messageServiceWorker({ type: 'cache-sam' });
 });
 
 vaultButton.addEventListener('click', onVaultButton);

@@ -411,3 +411,87 @@ label on a black bottle — the scans run to the bottle's silhouette and the
 frame). The last is the failure to expect on dark bottles: no contrast,
 and no rule of this kind can invent one. That is the case for a
 segmentation model, which needs weights this sandbox cannot fetch.
+
+## EdgeSAM as the Find button — 2026-09-18
+
+EdgeSAM (3x), the distilled Segment Anything, is now an optional download
+and an optional button: place the six handles roughly around the label,
+press **Find**, and the mask it returns becomes the handles (then Snap
+polishes them against the real pixels).
+
+### The prompt is the whole story
+
+The first measurement scored **33%**, against 80% for Snap alone, and the
+overlays said why. Prompted with the crop screen's default handles — a 10%
+inset, 64% of the frame — EdgeSAM answers the question it was asked and
+segments **the bottle**. All four of its masks do: on the Shaverde photo
+the four stability scores are 0.97/0.85/0.96/0.96 and every one of them
+outlines the same bottle, so no cleverer choice among them rescues a loose
+prompt. Prompted with handles already on the label it outlines the label.
+
+That is not a flaw to fix, it is what a promptable segmenter is. Two
+consequences, both shipped:
+
+- the crop screen refuses to run when the handles still enclose more than
+  55% of the photo, and says to drag them around the label first;
+- the eval seeds from the heuristic detector's *unsnapped* placement
+  instead of the inset box, because the harness has no human and that is
+  the closest stand-in for a rough drag.
+
+### Find against Snap, from the same start
+
+Both paths get the identical seed, then `roughen` pushes every handle a
+share of the label's size outward or inward in a fixed pattern — a
+stand-in for a human's imprecision, and the only condition under which the
+two can differ at all, since Snap only looks a few percent either side of
+where the handles already are.
+
+```
+smoke set, 8 photos, 40 scored fields
+seed error   Snap only   Find + Snap
+exact           80%          78%
+8%              70%          75%
+15%             53%          48%
+22%              8%          15%
+```
+
+On eight photos one field is 2.5 points, so none of those gaps means
+anything. **EdgeSAM does not measurably beat Snap on the data available**,
+and I am not going to dress up ±5 points on n=8 as a win. What the
+overlays do show is the shape of the difference: Find reconstructs an edge
+that has no contrast (it knows what a label is), Snap reconstructs an edge
+that has contrast but has moved (it measures the actual paper). They fail
+on different photos. That is an argument for having both, not for making
+either the default — which is exactly how it ships.
+
+### Cost
+
+```
+encoder   830–1140 ms   (1024², once per photo, kept while the handles move)
+decoder     80–175 ms   (per press)
+```
+on 4 WASM threads in headless Chromium here. End to end in the app on a
+4000 px photo: 2.9 s wall for the button, 1.3 s of it the model. Median
+per photo in the eval goes 1.9 s → 3.2 s. Download 37 MB, on top of the
+ONNX runtime it shares with the text engine.
+
+The honest phone number is still outstanding — this sandbox is not a
+Pixel, and the encoder is the part that will hurt.
+
+### Two fixes the overlays produced
+
+- `handlesFromMask` clamps its fitted curves to the blob's own bounding
+  box. A label cut off by the edge of the photo has a straight cut instead
+  of an arc, the half-ellipse fit then has nothing holding it down, and on
+  the Bel-Air Lagrave photo the top arc ran clear out of the frame.
+- The label finder's download now carries the ONNX runtime files too, so
+  the card is true on its own; they are skipped when the text engine has
+  already fetched them.
+
+### Licence
+
+EdgeSAM is **S-Lab License 1.0, non-commercial use only** — stricter than
+the Apache-2.0 everything else here vendors. `vendor/edgesam/README.md`
+says so, and it is another reason the finder is a separate, optional
+folder: a build that must be commercially redistributable leaves it out
+and loses one button.

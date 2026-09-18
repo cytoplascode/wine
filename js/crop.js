@@ -66,6 +66,7 @@ export function initCrop() {
   canvas.addEventListener('pointercancel', onPointerUp);
   $('#btn-crop-reset').addEventListener('click', resetPoints);
   $('#btn-crop-snap').addEventListener('click', snapHandles);
+  $('#btn-crop-find').addEventListener('click', findLabel);
 
   const slider = $('#wrap-slider');
   slider.value = String(Math.round((DEFAULT_WRAP * 180) / Math.PI));
@@ -141,6 +142,77 @@ export function snapHandles() {
     : edges.length ? `Snapped ${edges.join(', ')}; no clear edge on the rest.`
       : 'No clear paper edge near the handles — drag them closer and try again.');
   return moved;
+}
+
+let finding = null;
+
+/* How much of the photo the handles' bounding box covers. Past this the
+ * finder has nothing to go on and segments the bottle instead. The default
+ * placement is 0.8 × 0.8 = 0.64 of the frame, so it is over the line until
+ * the user has moved something. */
+const WHOLE_FRAME = 0.55;
+
+function encloses(pts) {
+  const xs = pts.map((p) => p.x); const ys = pts.map((p) => p.y);
+  const w = Math.max(...xs) - Math.min(...xs);
+  const h = Math.max(...ys) - Math.min(...ys);
+  return (w * h) / (bitmap.width * bitmap.height);
+}
+
+/**
+ * Find the label with EdgeSAM, from whatever the handles currently enclose.
+ * The model is an optional download, so this says so rather than starting
+ * one; a photo it cannot segment leaves the handles alone. Snap polishes
+ * the result, since the mask is a quarter-resolution outline and Snap works
+ * on the real pixels.
+ */
+export async function findLabel() {
+  if (!bitmap || !points || finding) return finding;
+  const button = $('#btn-crop-find');
+  const target = bitmap;
+  finding = (async () => {
+    try {
+      const sam = await import('./edgesam.js');
+      if (!(await sam.isModelCached())) {
+        setHint('Find needs the label finder — download it in Settings.');
+        return false;
+      }
+      // The finder answers "which pixels belong to the thing inside this
+      // box". Asked about the whole frame it answers "the bottle", which is
+      // a worse crop than the handles already are — measured, not guessed
+      // (eval/results.md). So it wants a rough placement first.
+      if (encloses(points) > WHOLE_FRAME) {
+        setHint('Drag the handles roughly around the label first, then press Find.');
+        return false;
+      }
+      button.disabled = true;
+      setHint('Finding the label…');
+      const region = await sam.segment(target, points, (m) => setHint(m.status));
+      if (bitmap !== target) return false;
+
+      const { handlesFromMask } = await import('./mask-fit.js');
+      const fit = handlesFromMask(region);
+      if (!fit) {
+        setHint('The label finder saw nothing label-shaped here. Drag the handles and Snap.');
+        return false;
+      }
+      points = fit.points.map((p) => ({ x: p.x * region.toSource, y: p.y * region.toSource }));
+      autoFitWrap();
+      draw();
+      drawPreview();
+      snapHandles();
+      const { encoder, decoder } = region.timing;
+      setHint(`Found the label in ${((encoder + decoder) / 1000).toFixed(1)}s. Drag any handle to correct it.`);
+      return true;
+    } catch (err) {
+      setHint(`The label finder could not run: ${err.message}`);
+      return false;
+    } finally {
+      button.disabled = false;
+      finding = null;
+    }
+  })();
+  return finding;
 }
 
 function renderWrap() {

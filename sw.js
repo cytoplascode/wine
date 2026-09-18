@@ -10,7 +10,7 @@
  * once downloaded, since a vendored build never changes under its own name.
  */
 
-const SHELL_CACHE = 'shell-v9';
+const SHELL_CACHE = 'shell-v11';
 
 /* The OCR cache is deliberately *not* versioned with the shell. Those files are
  * vendored and immutable — a new build of Tesseract would arrive under a new
@@ -18,6 +18,22 @@ const SHELL_CACHE = 'shell-v9';
  * the user's phone every time a stylesheet changed. `ocr-v2` is the name earlier
  * versions wrote to, kept alive so nobody has to download the packs twice. */
 const OCR_CACHE = 'ocr';
+/* The label finder is a separate, optional 37 MB, so it gets its own cache
+   and can be cleared without taking the recogniser with it. */
+const SAM_CACHE = 'sam';
+/* The finder runs on the same ONNX Runtime as the text engine, so the
+ * runtime files are part of this download too. `cacheAssets` skips whatever
+ * is already on the phone, so downloading both cards costs the runtime once. */
+const ORT_RUNTIME = [
+  './vendor/ppocr/ort.wasm.min.mjs',
+  './vendor/ppocr/ort-wasm-simd-threaded.mjs',
+  './vendor/ppocr/ort-wasm-simd-threaded.wasm.gz',
+];
+const SAM_ASSETS = [
+  ...ORT_RUNTIME,
+  './vendor/edgesam/edge_sam_3x_encoder.onnx',
+  './vendor/edgesam/edge_sam_3x_decoder.onnx',
+];
 const LEGACY_OCR_CACHES = ['ocr-v1', 'ocr-v2'];
 
 const SHELL_ASSETS = [
@@ -40,6 +56,9 @@ const SHELL_ASSETS = [
   './js/detect.js',
   './js/flatten.js',
   './js/refine.js',
+  './js/ort.js',
+  './js/edgesam.js',
+  './js/mask-fit.js',
   './js/viewport.js',
   './js/schema.js',
   './js/form.js',
@@ -73,9 +92,7 @@ const KNOWN_LANGS = ['eng', 'fra', 'ita', 'spa', 'por', 'deu', 'kat'];
 // PP-OCR: the ONNX Runtime loader, its wasm core (gzipped) and the two
 // models. Same deal — immutable under these names, fetched on request.
 const PPOCR_ASSETS = [
-  './vendor/ppocr/ort.wasm.min.mjs',
-  './vendor/ppocr/ort-wasm-simd-threaded.mjs',
-  './vendor/ppocr/ort-wasm-simd-threaded.wasm.gz',
+  ...ORT_RUNTIME,
   './vendor/ppocr/ch_PP-OCRv4_det_infer.onnx',
   './vendor/ppocr/en_PP-OCRv4_rec.onnx',
 ];
@@ -127,7 +144,7 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
-    const keep = new Set([SHELL_CACHE, OCR_CACHE, ...LEGACY_OCR_CACHES]);
+    const keep = new Set([SHELL_CACHE, OCR_CACHE, SAM_CACHE, ...LEGACY_OCR_CACHES]);
     const names = await caches.keys();
     await Promise.all(names.filter((n) => !keep.has(n)).map((n) => caches.delete(n)));
     await self.clients.claim();
@@ -256,6 +273,10 @@ self.addEventListener('message', (event) => {
     event.waitUntil(cacheOcrAssets(event.source, data.langs, data.engine));
   } else if (data.type === 'ocr-status') {
     event.waitUntil(reportOcrStatus(event.source, data.langs, data.engine));
+  } else if (data.type === 'cache-sam') {
+    event.waitUntil(cacheAssets(event.source, SAM_ASSETS, SAM_CACHE, 'sam-progress'));
+  } else if (data.type === 'sam-status') {
+    event.waitUntil(reportStatus(event.source, SAM_ASSETS, 'sam-progress'));
   }
 });
 
@@ -268,12 +289,16 @@ function isVendorAsset(url) {
 const alreadyCached = (asset) => caches.match(asset);
 
 async function cacheOcrAssets(client, langs, engine) {
-  const assets = ocrAssets(langs, engine);
-  const cache = await caches.open(OCR_CACHE);
+  return cacheAssets(client, ocrAssets(langs, engine), OCR_CACHE, 'ocr-progress', { engine });
+}
+
+/** Fetch a set of assets into a cache, reporting progress as it goes. */
+async function cacheAssets(client, assets, cacheName, type, extra = {}) {
+  const cache = await caches.open(cacheName);
   let done = 0;
 
-  const post = (extra) => client && client.postMessage({
-    type: 'ocr-progress', engine, done, total: assets.length, ...extra,
+  const post = (more) => client && client.postMessage({
+    type, done, total: assets.length, ...extra, ...more,
   });
 
   post({});
@@ -290,17 +315,15 @@ async function cacheOcrAssets(client, langs, engine) {
   post({ complete: true });
 }
 
-async function reportOcrStatus(client, langs, engine) {
-  const assets = ocrAssets(langs, engine);
+/** How much of a set is already on the phone. */
+async function reportStatus(client, assets, type, extra = {}) {
   const present = await Promise.all(assets.map(alreadyCached));
   const done = present.filter(Boolean).length;
   if (client) {
-    client.postMessage({
-      type: 'ocr-progress',
-      engine,
-      done,
-      total: assets.length,
-      complete: done === assets.length,
-    });
+    client.postMessage({ type, done, total: assets.length, complete: done === assets.length, ...extra });
   }
+}
+
+async function reportOcrStatus(client, langs, engine) {
+  return reportStatus(client, ocrAssets(langs, engine), 'ocr-progress', { engine });
 }

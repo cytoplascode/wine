@@ -18,19 +18,15 @@ import {
   EN_CHARSET, detInputSize, recInputWidth, boxesFromMap, orderBoxes, ctcDecode,
 } from './ppocr-post.js';
 import { toGray, toChroma } from './detect.js';
+import {
+  ORT_FILES, configureOrt, threadCount, loadOrt, createSession, ortVendor, filesCached,
+} from './ort.js';
 
-const DEFAULT_VENDOR = new URL('../vendor/ppocr/', import.meta.url).href;
-
+/** The two model files; the runtime's own live in js/ort.js. */
 export const FILES = {
-  loader: 'ort.wasm.min.mjs',
-  threads: 'ort-wasm-simd-threaded.mjs',
-  wasm: 'ort-wasm-simd-threaded.wasm.gz',
   det: 'ch_PP-OCRv4_det_infer.onnx',
   rec: 'en_PP-OCRv4_rec.onnx',
 };
-
-/** Beyond four, the little cores on a phone slow the pool down more than they help. */
-const MAX_THREADS = 4;
 
 const DET_MEAN = [0.406, 0.456, 0.485]; // BGR order of ImageNet RGB means
 const DET_STD = [0.225, 0.224, 0.229];
@@ -47,73 +43,41 @@ const REC_LIMIT = 1600;
  *  larger and is left alone. */
 const MIN_LONG_SIDE = 1000;
 
-let settings = { vendor: DEFAULT_VENDOR, threads: null };
 let loaded = null;
 
 /**
  * Override where the files come from or how many threads to use. The eval
  * harness points `vendor` at the same folder over its own server and pins
- * `threads` to make the single-core number reproducible.
+ * `threads` to make the single-core number reproducible. The models live
+ * beside the runtime, so this configures both.
  */
 export function configure(next) {
-  settings = { ...settings, ...next };
+  configureOrt(next);
   loaded = null;
 }
 
-/** How many threads this page can use: needs SharedArrayBuffer, which
- *  needs cross-origin isolation (the service worker supplies the headers). */
-export function threadCount() {
-  if (settings.threads) return settings.threads;
-  if (!self.crossOriginIsolated || typeof SharedArrayBuffer === 'undefined') return 1;
-  return Math.max(1, Math.min(MAX_THREADS, navigator.hardwareConcurrency || 1));
-}
-
-async function fetchBytes(url) {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`${response.status} fetching ${url.split('/').pop()}`);
-  return response;
-}
-
-async function inflate(response) {
-  const stream = response.body.pipeThrough(new DecompressionStream('gzip'));
-  return new Response(stream).arrayBuffer();
-}
-
-async function load(onProgress) {
-  const { vendor } = settings;
-  const report = (label) => onProgress && onProgress({ status: label, progress: 0 });
-
-  report('Starting the recognition engine…');
-  const ort = await import(`${vendor}${FILES.loader}`);
-  ort.env.wasm.wasmPaths = vendor;
-  ort.env.wasm.wasmBinary = await inflate(await fetchBytes(`${vendor}${FILES.wasm}`));
-  ort.env.wasm.numThreads = threadCount();
-
-  report('Loading the text models…');
-  const opts = { executionProviders: ['wasm'] };
-  const [det, rec] = await Promise.all([
-    fetchBytes(`${vendor}${FILES.det}`).then((r) => r.arrayBuffer()).then((b) => ort.InferenceSession.create(b, opts)),
-    fetchBytes(`${vendor}${FILES.rec}`).then((r) => r.arrayBuffer()).then((b) => ort.InferenceSession.create(b, opts)),
-  ]);
-  return { ort, det, rec, threads: ort.env.wasm.numThreads };
-}
+export { threadCount };
 
 function getEngine(onProgress) {
-  loaded ||= load(onProgress).catch((err) => { loaded = null; throw err; });
+  loaded ||= (async () => {
+    const report = (label) => onProgress && onProgress({ status: label, progress: 0 });
+    const ort = await loadOrt(onProgress);
+    report('Loading the text models…');
+    const [det, rec] = await Promise.all([
+      createSession(`${ortVendor()}${FILES.det}`),
+      createSession(`${ortVendor()}${FILES.rec}`),
+    ]);
+    return { ort, det, rec, threads: ort.env.wasm.numThreads };
+  })().catch((err) => { loaded = null; throw err; });
   return loaded;
 }
 
 /** Are all the files on the phone already? The crop screen asks before
  *  running the detector on its own, so a 16 MB download never starts
  *  without the user having pressed the button for it. */
-export async function isEngineCached() {
-  if (typeof caches === 'undefined') return false;
-  try {
-    const hits = await Promise.all(Object.values(FILES).map((f) => caches.match(`${settings.vendor}${f}`)));
-    return hits.every(Boolean);
-  } catch {
-    return false;
-  }
+export function isEngineCached() {
+  const names = [...Object.values(ORT_FILES), ...Object.values(FILES)];
+  return filesCached(names.map((f) => `${ortVendor()}${f}`));
 }
 
 /** RGBA ImageData → BGR CHW float32 with the given per-channel mean/std. */

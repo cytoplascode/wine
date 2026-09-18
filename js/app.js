@@ -29,6 +29,7 @@ import {
   LANGUAGES, MAX_ACTIVE, getLanguages, setLanguages, toTesseractLangs, totalMegabytes,
 } from './languages.js';
 import { ENGINES, getEngine, setEngine } from './engine.js';
+import { startViewportWatch } from './viewport.js';
 import { threadCount } from './ppocr.js';
 
 /* ── Photo handling ─────────────────────────────────────────────────── */
@@ -1165,6 +1166,7 @@ function newBottle() {
   go('capture', 'label');
 }
 
+startViewportWatch();
 initCapture({ onPhoto: handlePhoto });
 crop.initCrop();
 buildForm();

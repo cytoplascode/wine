@@ -472,7 +472,7 @@ decoder     80–175 ms   (per press)
 ```
 on 4 WASM threads in headless Chromium here. End to end in the app on a
 4000 px photo: 2.9 s wall for the button, 1.3 s of it the model. Median
-per photo in the eval goes 1.9 s → 3.2 s. Download 37 MB, on top of the
+per photo in the eval goes 1.9 s → 3.2 s. Download 38 MB, on top of the
 ONNX runtime it shares with the text engine.
 
 The honest phone number is still outstanding — this sandbox is not a

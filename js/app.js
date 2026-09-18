@@ -1016,10 +1016,15 @@ const ocrCacheBtn = $('#btn-cache-ocr');
 /** What the service worker needs to know to answer for the current engine. */
 const ocrRequest = (type) => ({ type, langs: getLanguages(), engine: getEngine() });
 
-function renderOcrProgress({ engine, done, total, complete, error }) {
+/** Set while this page is the one downloading, so an idle partial set is not
+ *  mistaken for a download in progress. */
+let ocrDownloading = false;
+
+function renderOcrProgress({ engine, done, total, complete, error }, running = ocrDownloading) {
   // A report about the other engine — the answer to a status request sent
   // before the user switched — must not repaint the card for this one.
   if (engine && engine !== getEngine()) return;
+  if (error || complete) ocrDownloading = false;
   if (error) {
     ocrDot.dataset.state = 'err';
     ocrStatus.textContent = `Download failed — ${error}`;
@@ -1046,12 +1051,20 @@ function renderOcrProgress({ engine, done, total, complete, error }) {
     return;
   }
   ocrDot.dataset.state = 'warn';
-  ocrBar.hidden = false;
+  ocrBar.hidden = done === 0;
   ocrBar.querySelector('i').style.width = `${Math.round((done / total) * 100)}%`;
+  // `running` is set only while this page is actually downloading. Without
+  // it a partial set reads as a download in progress and hides the button
+  // that would finish it — which is what stranded the label finder card,
+  // and is reachable here too now that both sets share the ONNX Runtime:
+  // fetch the finder first and this card starts life at 3 of 5.
   ocrStatus.textContent = done === 0
     ? 'Not downloaded — needs one connection, then works offline for good.'
-    : `Downloading… ${done} of ${total} files.`;
-  ocrCacheBtn.hidden = done !== 0;
+    : running
+      ? `Downloading… ${done} of ${total} files.`
+      : `Partly downloaded — ${total - done} of ${total} files to go.`;
+  ocrCacheBtn.hidden = running;
+  ocrCacheBtn.textContent = done === 0 ? 'Download for offline use' : 'Resume download';
 }
 
 function renderEngineChips() {
@@ -1120,23 +1133,44 @@ const samStatus = $('#sam-status');
 const samBar = $('#sam-bar');
 const samCacheBtn = $('#btn-cache-sam');
 
-/* The card counts the cached files itself. Asking the service worker meant
- * the card sat on "Checking…" forever whenever an older worker was still in
- * charge of the page — it has no reply for a message it was shipped without,
- * and the page cannot tell silence from a slow answer. `caches` is readable
- * from here, so the question does not need a worker at all; the worker is
- * still what does the downloading, and its progress messages still arrive. */
+/* Two separate questions, which the first version of this card ran together
+ * and got wrong: *what is on the phone* and *how is a download going*.
+ *
+ * The finder is its two weight files. The ONNX Runtime beside them is a
+ * shared dependency the text engine usually fetched long ago, and counting
+ * those as part of the finder made a card that had never started a download
+ * read "Downloading… 3 of 5 files" — with the button hidden, because
+ * something was cached, so there was no way to start one either.
+ *
+ * So: the cached state is read from `caches` (no worker involved, so no
+ * waiting on a message an older worker was shipped without), the progress
+ * state comes from the page's own downloader, and the button is hidden only
+ * while bytes are actually moving. */
 let samDownloading = false;
-let samHeard = false;   // has the worker answered about the finder at all?
 
+/** What is on the phone right now. */
 async function refreshSamCard() {
   if (samDownloading) return;
   try {
-    const { modelAssets } = await import('./edgesam.js');
-    const assets = modelAssets();
-    const hits = await Promise.all(assets.map((url) => caches.match(url)));
-    renderSamProgress({ done: hits.filter(Boolean).length, total: assets.length,
-      complete: hits.every(Boolean) });
+    const [{ modelWeights }, { missingAssets, formatSize }] = await Promise.all([
+      import('./edgesam.js'), import('./download.js'),
+    ]);
+    const weights = modelWeights();
+    const todo = await missingAssets(weights);
+    if (!todo.length) return renderSamReady();
+
+    samDot.dataset.state = 'warn';
+    samBar.hidden = true;
+    samCacheBtn.hidden = false;
+    const left = await estimateSize(todo);
+    const size = left ? formatSize(left) : `${SAM_DOWNLOAD_MB} MB`;
+    if (todo.length === weights.length) {
+      samStatus.textContent = `Not downloaded — ${size}, then it works offline.`;
+      samCacheBtn.textContent = 'Download for offline use';
+    } else {
+      samStatus.textContent = `Partly downloaded — ${size} to go.`;
+      samCacheBtn.textContent = 'Resume download';
+    }
   } catch (err) {
     samDot.dataset.state = 'err';
     samStatus.textContent = `Could not check: ${err.message}`;
@@ -1145,29 +1179,63 @@ async function refreshSamCard() {
   }
 }
 
-function renderSamProgress({ done, total, complete, error }) {
-  if (error) {
-    samDot.dataset.state = 'err';
-    samStatus.textContent = `Download failed — ${error}`;
-    samBar.hidden = true;
-    samCacheBtn.hidden = false;
-    samCacheBtn.textContent = 'Retry download';
-    return;
+/** Roughly how big the remaining files are, for the idle line. Head requests
+ *  only, and a failure just means the card quotes the advertised size. */
+async function estimateSize(urls) {
+  try {
+    const sizes = await Promise.all(urls.map(async (url) => {
+      const res = await fetch(`${url}?download=1`, { method: 'HEAD' });
+      return res.ok ? Number(res.headers.get('content-length')) || 0 : 0;
+    }));
+    return sizes.reduce((a, b) => a + b, 0);
+  } catch {
+    return 0;
   }
-  if (complete) {
-    samDot.dataset.state = 'ok';
-    samStatus.textContent = 'Ready — the crop screen\'s Find button will use it.';
-    samBar.hidden = true;
-    samCacheBtn.hidden = true;
-    return;
+}
+
+const SAM_DOWNLOAD_MB = 38;
+
+function renderSamReady() {
+  samDot.dataset.state = 'ok';
+  samStatus.textContent = 'Ready — the crop screen\'s Find button will use it.';
+  samBar.hidden = true;
+  samCacheBtn.hidden = true;
+}
+
+function renderSamError(message) {
+  samDot.dataset.state = 'err';
+  samStatus.textContent = `Download failed — ${message}`;
+  samBar.hidden = true;
+  samCacheBtn.hidden = false;
+  samCacheBtn.textContent = 'Retry download';
+}
+
+async function downloadSam() {
+  if (samDownloading) return;
+  samDownloading = true;
+  samCacheBtn.hidden = true;
+  samBar.hidden = false;
+  samBar.querySelector('i').style.width = '0%';
+  samStatus.textContent = 'Starting…';
+  try {
+    const [{ modelAssets }, download] = await Promise.all([
+      import('./edgesam.js'), import('./download.js'),
+    ]);
+    await download.downloadToCache(modelAssets(), 'sam', ({ loaded, total, complete }) => {
+      if (complete) return;
+      samBar.querySelector('i').style.width = total
+        ? `${Math.round((loaded / total) * 100)}%` : '0%';
+      samStatus.textContent = total
+        ? `Downloading… ${download.formatSize(loaded)} of ${download.formatSize(total)}`
+        : `Downloading… ${download.formatSize(loaded)}`;
+    });
+    samDownloading = false;
+    renderSamReady();
+    toast('The label finder is ready.');
+  } catch (err) {
+    samDownloading = false;
+    renderSamError(err.message);
   }
-  samDot.dataset.state = 'warn';
-  samBar.hidden = done === 0;
-  samBar.querySelector('i').style.width = `${Math.round((done / total) * 100)}%`;
-  samStatus.textContent = done === 0
-    ? 'Not downloaded — Find will ask for it.'
-    : `Downloading… ${done} of ${total} files.`;
-  samCacheBtn.hidden = done !== 0;
 }
 
 async function messageServiceWorker(payload) {
@@ -1187,11 +1255,6 @@ async function registerServiceWorker() {
   }
   navigator.serviceWorker.addEventListener('message', (event) => {
     if (event.data && event.data.type === 'ocr-progress') renderOcrProgress(event.data);
-    if (event.data && event.data.type === 'sam-progress') {
-      samHeard = true;
-      if (event.data.complete || event.data.error) samDownloading = false;
-      renderSamProgress(event.data);
-    }
   });
   // The worker adds the cross-origin-isolation headers that let recognition
   // use several cores, but only to pages it serves — this one, on a first
@@ -1251,28 +1314,12 @@ $('#btn-crop-done').addEventListener('click', flattenAndReview);
 $('#btn-review-back').addEventListener('click', () => go('home'));
 ocrCacheBtn.addEventListener('click', () => {
   ocrCacheBtn.hidden = true;
+  ocrDownloading = true;
   toast('Downloading the recognition engine…');
   messageServiceWorker(ocrRequest('cache-ocr'));
 });
 
-samCacheBtn.addEventListener('click', () => {
-  samCacheBtn.hidden = true;
-  samDownloading = true;
-  samHeard = false;
-  toast('Downloading the label finder…');
-  messageServiceWorker({ type: 'cache-sam' });
-  // A worker too old to know `cache-sam` never answers at all, which would
-  // leave the card stuck. One silent second is enough to tell that apart
-  // from a slow download, which reports its first file straight away.
-  setTimeout(() => {
-    if (samHeard || !samDownloading) return;
-    samDownloading = false;
-    samStatus.textContent = 'The app has an update waiting — close it and open it again, then try the download.';
-    samDot.dataset.state = 'warn';
-    samBar.hidden = true;
-    samCacheBtn.hidden = false;
-  }, 5000);
-});
+samCacheBtn.addEventListener('click', downloadSam);
 
 vaultButton.addEventListener('click', onVaultButton);
 $('#btn-add-food').addEventListener('click', () => go('capture', 'food'));

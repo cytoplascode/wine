@@ -47,14 +47,20 @@ export function configure(next) {
   loaded = null;
 }
 
-/** Every file the finder needs, as absolute URLs: the shared ONNX Runtime
- *  and the two weights. The Settings card counts these itself rather than
- *  asking the service worker, so it says something true even when an older
- *  worker is still in charge of the page. */
+/** The finder itself: the two weight files, as absolute URLs. This is what
+ *  "is the label finder downloaded?" means — the runtime below is a shared
+ *  dependency, and counting it as part of the finder made a card that had
+ *  never started a download read as three fifths of the way through one. */
+export function modelWeights() {
+  return Object.values(FILES).map((f) => `${settings.vendor}${f}`);
+}
+
+/** Everything it needs to run: the weights plus the shared ONNX Runtime,
+ *  which the text engine may well have fetched already. */
 export function modelAssets() {
   return [
     ...Object.values(ORT_FILES).map((f) => `${ortVendor()}${f}`),
-    ...Object.values(FILES).map((f) => `${settings.vendor}${f}`),
+    ...modelWeights(),
   ];
 }
 

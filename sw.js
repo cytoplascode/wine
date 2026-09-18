@@ -10,7 +10,7 @@
  * once downloaded, since a vendored build never changes under its own name.
  */
 
-const SHELL_CACHE = 'shell-v11';
+const SHELL_CACHE = 'shell-v12';
 
 /* The OCR cache is deliberately *not* versioned with the shell. Those files are
  * vendored and immutable — a new build of Tesseract would arrive under a new
@@ -58,6 +58,7 @@ const SHELL_ASSETS = [
   './js/refine.js',
   './js/ort.js',
   './js/edgesam.js',
+  './js/download.js',
   './js/mask-fit.js',
   './js/viewport.js',
   './js/schema.js',
@@ -167,6 +168,14 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (request.method !== 'GET') return;
+
+  // The page downloads the big model files itself, so it can show real
+  // progress and catch a stalled connection (js/download.js). Leaving those
+  // requests alone matters: the vendor rule below would put a second copy of
+  // every byte in a cache of its own, 22 MB at a time. Not calling
+  // respondWith hands the request straight back to the browser.
+  if (url.searchParams.has('download')) return;
+
   event.respondWith(
     (isVendorAsset(request.url) ? cacheFirst(request) : networkFirst(request)).then(withIsolation),
   );

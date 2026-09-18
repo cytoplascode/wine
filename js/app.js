@@ -945,6 +945,8 @@ async function refreshSettingsBadge() {
     needsAttention = true;
   }
   badge.hidden = !needsAttention;
+  setupDone.vault = !needsAttention;
+  renderSetupCard();
   showCoachMark(needsAttention);
 }
 
@@ -1032,7 +1034,125 @@ $('#btn-save-folders').addEventListener('click', () => {
  * depends on vault status), settings shows the vault card, the folders
  * card, and lets the OCR card refresh itself. */
 onEnter('home', () => { renderDraftsCard(); renderRecentCard(); refreshSettingsBadge(); });
-onEnter('settings', () => { renderVaultCard(); renderFoldersCard(); refreshSamCard(); });
+onEnter('settings', () => {
+  renderVaultCard(); renderFoldersCard(); refreshSamCard(); renderSetupCard();
+});
+
+/* ── Getting started ────────────────────────────────────────────────── */
+
+/* Three cards, and no order to them on the face of it: the gear is where a
+ * first run lands, and nothing on this screen says which part is needed and
+ * which is a nicety. So a checklist sits on top of them, in the same order
+ * as the cards, carrying each one's live state and a tap that scrolls to it.
+ *
+ * Only the text engine is needed. Without a vault the note and its photos go
+ * to the browser's downloads (js/save.js falls back to `download()`), and
+ * without the finder the crop screen simply has one button fewer. */
+
+const SETUP_DISMISSED = 'label-scanner-setup';
+
+const setupDone = { vault: false, ocr: false, sam: false };
+
+/* Every state starts out false, so rendering before they have been read once
+ * would flash "nothing is set up" at a phone where everything is. The finder
+ * is the last to resolve — it reads the caches — so it opens the gate. */
+let setupReady = false;
+
+const setupHidden = () => {
+  try { return localStorage.getItem(SETUP_DISMISSED) === 'hidden'; } catch { return false; }
+};
+
+const SETUP_STEPS = [
+  {
+    key: 'vault',
+    card: 'vault-card',
+    name: 'Obsidian vault',
+    need: 'Optional',
+    todo: 'Not connected — notes would go to your downloads',
+    done: 'Connected',
+  },
+  {
+    key: 'ocr',
+    card: 'ocr-card',
+    name: 'Text engine',
+    need: 'Needed',
+    todo: 'Not downloaded — nothing can be read yet',
+    done: 'Downloaded and ready',
+  },
+  {
+    key: 'sam',
+    card: 'sam-card',
+    name: 'Label finder',
+    need: 'Optional',
+    todo: 'Not downloaded — the crop screen works without it',
+    done: 'Downloaded and ready',
+  },
+];
+
+function renderSetupCard() {
+  const card = $('#setup-card');
+  const list = $('#setup-steps');
+  if (!card || !list || !setupReady) return;
+
+  // Nothing left to say once everything is set up, or once it is waved away.
+  // The cards below each carry their own state and the gear keeps its dot, so
+  // hiding this loses nobody anything.
+  const everything = SETUP_STEPS.every((step) => setupDone[step.key]);
+  card.hidden = everything || setupHidden();
+
+  list.textContent = '';
+  for (const step of SETUP_STEPS) {
+    const done = setupDone[step.key];
+    const item = document.createElement('li');
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'setup-step';
+    button.dataset.done = String(done);
+    button.addEventListener('click', () => jumpToCard(step.card));
+
+    const mark = document.createElement('span');
+    mark.className = 'setup-mark';
+    mark.textContent = done ? '✓' : '';
+
+    const text = document.createElement('span');
+    text.className = 'setup-text';
+    const name = document.createElement('span');
+    name.className = 'setup-name';
+    name.textContent = step.name;
+    const need = document.createElement('em');
+    need.className = 'setup-need';
+    need.dataset.need = step.need.toLowerCase();
+    need.textContent = step.need;
+    name.append(' ', need);
+    const state = document.createElement('span');
+    state.className = 'setup-state';
+    state.textContent = done ? step.done : step.todo;
+    text.append(name, state);
+
+    button.append(mark, text);
+    item.append(button);
+    list.append(item);
+  }
+}
+
+/** Scroll a card into view and flash it, so a tap on a step lands somewhere
+ *  visible rather than leaving the user to find it. */
+function jumpToCard(id) {
+  const card = $(`#${id}`);
+  if (!card) return;
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  card.classList.remove('flash');
+  // Restart the animation even when the same card is tapped twice.
+  void card.offsetWidth;
+  card.classList.add('flash');
+  card.addEventListener('animationend', () => card.classList.remove('flash'), { once: true });
+}
+
+$('#btn-setup-dismiss').addEventListener('click', () => {
+  try { localStorage.setItem(SETUP_DISMISSED, 'hidden'); } catch { /* private mode */ }
+  $('#setup-card').hidden = true;
+});
 
 /* ── Offline OCR status ─────────────────────────────────────────────── */
 
@@ -1053,6 +1173,8 @@ function renderOcrProgress({ engine, done, total, complete, error }, running = o
   // before the user switched — must not repaint the card for this one.
   if (engine && engine !== getEngine()) return;
   if (error || complete) ocrDownloading = false;
+  setupDone.ocr = Boolean(complete) && total !== 0;
+  renderSetupCard();
   if (error) {
     ocrDot.dataset.state = 'err';
     ocrStatus.textContent = `Download failed — ${error}`;
@@ -1185,8 +1307,11 @@ async function refreshSamCard() {
     ]);
     const weights = modelWeights();
     const todo = await missingAssets(weights);
+    setupReady = true;
     if (!todo.length) return renderSamReady();
 
+    setupDone.sam = false;
+    renderSetupCard();
     samDot.dataset.state = 'warn';
     samBar.hidden = true;
     samCacheBtn.hidden = false;
@@ -1228,6 +1353,8 @@ function renderSamReady() {
   samStatus.textContent = 'Ready — the crop screen\'s Find button will use it.';
   samBar.hidden = true;
   samCacheBtn.hidden = true;
+  setupDone.sam = true;
+  renderSetupCard();
 }
 
 function renderSamError(message) {

@@ -45,7 +45,9 @@
   </div>
 
   <div class="coach" id="coach-settings" hidden>
-    <p>Set up here first — connect your Obsidian vault and download the text engine.</p>
+    <p>Set up in here. You need the <strong>text engine</strong> — it reads the label.
+      The <strong>label finder</strong> and your <strong>Obsidian vault</strong> are both
+      optional; with no vault, notes and photos go to your downloads instead.</p>
     <button class="btn btn-quiet" id="btn-coach-dismiss">Got it</button>
   </div>
 
@@ -62,6 +64,16 @@
   </header>
 
   <div class="scroll">
+    <div class="card" id="setup-card" hidden>
+      <div class="card-head">
+        <h2>Getting started</h2>
+      </div>
+      <p class="muted">Three things to set up, and only one of them is needed. Tap a step
+        to jump to it.</p>
+      <ol class="setup-steps" id="setup-steps"></ol>
+      <button class="btn btn-quiet" id="btn-setup-dismiss">Hide this</button>
+    </div>
+
     <div class="card" id="vault-card">
       <div class="card-head">
         <span class="dot" id="vault-dot"></span>
